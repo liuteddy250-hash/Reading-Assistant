@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/e2e.mjs   (BASE_URL defaults to http://127.0.0.1:3000)
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:3000';
@@ -179,11 +179,28 @@ const second = chapters[1] ?? chapters[0];
     body: JSON.stringify({ text: 'ubiquitous', mode: 'word' }),
   });
   const data = await json(response);
+  const meaning = String(data?.meaning ?? data?.translation ?? '');
   check(
     '划词翻译（离线词典降级）',
-    response.status === 200 && String(data?.meaning ?? '').includes('无处不在'),
-    `${data?.provider} ${data?.meaning ?? data?.translation ?? ''}`,
+    response.status === 200 && data?.provider === 'offline' && meaning.length > 0,
+    `${data?.provider} ${meaning.slice(0, 50)}`,
   );
+}
+
+// 13b) Optional: ECDICT coverage. CI has no data/ directory, so this is skipped there.
+{
+  if (existsSync(path.join(process.cwd(), 'data', 'ecdict.db'))) {
+    const response = await request('/api/translate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'serendipity', mode: 'word' }),
+    });
+    const data = await json(response);
+    const meaning = String(data?.meaning ?? '');
+    check('ECDICT 词典命中（内置词表没有的词）', response.status === 200 && meaning.includes('运气'), meaning.slice(0, 60));
+  } else {
+    console.log('SKIP  ECDICT 词典未安装（npm run dict:import 后可启用该断言）');
+  }
 }
 
 // 14) Add a vocabulary entry (double-click behaviour).

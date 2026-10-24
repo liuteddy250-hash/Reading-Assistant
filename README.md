@@ -2,7 +2,7 @@
 
 上传 PDF 英文书 → 自动切分章节 → **先预习长难句与难词** → 进入带难词高亮、划词翻译、划线笔记和生词本的沉浸阅读。
 
-技术栈：**Next.js 15（App Router）+ TypeScript + Prisma 6 + SQLite + unpdf**，单体应用，一条命令即可跑通；翻译与讲解使用 **OpenAI 兼容大模型接口**，未配置密钥时自动降级为**内置离线词典 + 规则分析**，全流程仍可走通。
+技术栈：**Next.js 15（App Router）+ TypeScript + Prisma 6 + SQLite + unpdf + ECDICT**，单体应用，一条命令即可跑通；翻译与讲解使用 **OpenAI 兼容大模型接口**，未配置密钥时自动降级为 **ECDICT 离线词典（77 万词条）+ 规则分析**，全流程仍可走通。
 
 ---
 
@@ -46,7 +46,7 @@
 
 ## 3. 快速开始
 
-前置：Node.js ≥ 20（推荐 22/24）、npm。
+前置：Node.js ≥ 24（离线词典用到内置 `node:sqlite`）、npm。
 
 ```bash
 cd english-reader
@@ -57,6 +57,11 @@ npm install
 # 初始化数据库（二选一）
 npm run db:push     # 标准方式：prisma db push
 npm run db:init     # 备选：node:sqlite 直接建表，无需 Prisma 引擎子进程
+
+# 可选但推荐：导入离线词典（77 万英汉词条，见 6.7）
+#   先下载 CSV 到 data/ecdict.csv（Windows 用 curl.exe）
+curl -L -o data/ecdict.csv https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv
+npm run dict:import
 
 npm run dev         # http://localhost:3000
 ```
@@ -97,6 +102,7 @@ BASE_URL=http://127.0.0.1:3008 npm run e2e
 | `LIBRETRANSLATE_URL` / `LIBRETRANSLATE_API_KEY` | 可选 | 第二层翻译兜底；不填则跳过 |
 | `STORAGE_DIR` | 可选 | PDF 原件目录，默认 `./data/uploads`；生产建议挂持久磁盘或改对象存储 |
 | `MAX_UPLOAD_MB` | 可选 | 上传大小上限，默认 50 |
+| `DICT_DB_PATH` | 可选 | 离线词典路径，默认 `./data/ecdict.db`；文件不存在时自动回退内置小词表 |
 
 DeepSeek 示例：
 
@@ -124,13 +130,17 @@ english-reader/
 │  └─ schema.prisma              # 数据模型（User/Book/Chapter/Prestudy/Annotation/Word）
 ├─ samples/
 │  └─ sample-book.pdf            # 验收用样例 PDF（脚本生成）
+├─ data/                         # 运行时数据（gitignore）
+│  ├─ uploads/                   # PDF 原件
+│  └─ ecdict.db                  # 离线词典（npm run dict:import 生成）
 ├─ .github/
 │  └─ workflows/ci.yml           # CI：安装 → 建库 → 构建 → 起服务 → 跑 e2e
 ├─ scripts/
 │  ├─ init-db.mjs                # 无 Prisma 引擎时的建表脚本
+│  ├─ import-ecdict.mjs          # ECDICT CSV → SQLite（流式解析 + 事务批量写入）
 │  ├─ make-sample-pdf.mjs        # 纯手写 PDF 生成器（无第三方依赖）
 │  ├─ smoke-db.mjs               # Prisma 读写冒烟测试
-│  └─ e2e.mjs                    # 端到端验收（19 项断言）
+│  └─ e2e.mjs                    # 端到端验收（20 项断言）
 ├─ src/
 │  ├─ middleware.ts              # 未登录跳转登录页
 │  ├─ app/
@@ -170,11 +180,12 @@ english-reader/
 │     ├─ pdf.ts                   # unpdf 提取文本 + 扫描件判定
 │     ├─ chapters.ts              # 章节识别 / 分块 / 手动划分
 │     ├─ text.ts                  # 断句、分段、重排硬换行、分词
-│     ├─ analyze.ts               # 难词打分、长难句筛选
+│     ├─ analyze.ts               # 难词打分（ECDICT 标签/词频）、长难句筛选
 │     ├─ common-words.ts          # 常用词表（高亮灵敏度开关）
-│     ├─ glossary.ts              # 离线词库
+│     ├─ dictionary.ts            # ECDICT SQLite 查询（精确 + 词形还原 + 缓存）
+│     ├─ glossary.ts              # 兜底小词库（无 ECDICT 时使用）
 │     ├─ llm.ts                   # OpenAI 兼容客户端
-│     ├─ translate.ts             # LLM → LibreTranslate → 离线词典
+│     ├─ translate.ts             # LLM → LibreTranslate → ECDICT/内置词库
 │     ├─ prestudy.ts              # 预习材料生成 / 缓存
 │     ├─ storage.ts               # PDF 落盘
 │     └─ types.ts
@@ -201,11 +212,12 @@ english-reader/
 
 ### 6.2 难词与长难句（`src/lib/analyze.ts`）
 
-- 难度分 = 常用词表外 + 长度 + 音节数 + 后缀形态（`-tion/-ous/-ity/...`），映射到 1–3 级；
+- 难度分优先看 ECDICT 元数据：考试标签（四级/高考→1，六级/考研→2，托福/雅思→3，GRE→4），没有标签时按 BNC/COCA 词频排名分档；
+- 词表里没有的词回退到形态启发式（长度 + 音节数 + 后缀）；常用词表内的词直接判为 0 级；
 - 每章取分数最高的 40 个词，其中 ≥2 级的进入阅读器高亮；
 - 长难句：≥16 词，按「词数 + 从句连接词数 + 逗号数」排序取前 6。
 
-> 词表与打分是**启发式**的，`common-words.ts` 与 `analyze.ts` 是调整高亮灵敏度的唯一入口；生产环境建议换成 COCA / wordfreq 词频表。
+> 高亮灵敏度由 `common-words.ts` 与 `analyze.ts` 的阈值控制；词典缺失时自动退回纯启发式打分。
 
 ### 6.3 预习材料（`src/lib/prestudy.ts`）
 
@@ -229,7 +241,7 @@ const startInP = pre.toString().length;
 ### 6.5 翻译与降级链（`src/lib/translate.ts`）
 
 ```
-LLM（OpenAI 兼容） → LibreTranslate → 内置离线词典 → 明确失败提示
+LLM（OpenAI 兼容） → LibreTranslate → ECDICT 离线词典 → 内置小词表 → 明确失败提示
 ```
 
 - 单词走词典模式（音标 / 词性 / 释义），整句走向翻译模式；
@@ -239,6 +251,18 @@ LLM（OpenAI 兼容） → LibreTranslate → 内置离线词典 → 明确失�
 ### 6.6 越权防护
 
 所有章节、划线、生词操作先做归属校验（`src/lib/access.ts`：`where: { id, book: { userId } }`），跨账号访问统一 404。
+
+### 6.7 离线词典（ECDICT）
+
+`src/lib/dictionary.ts` 读取 `data/ecdict.db`，数据由 `scripts/import-ecdict.mjs` 从 [ECDICT](https://github.com/skywind3000/ECDICT)（MIT）生成：
+
+- **规模**：约 77 万词条，含音标、多义项中文释义、柯林斯/牛津标记、BNC/COCA 词频、四级/六级/考研/托福/雅思/GRE 标签；
+- **查询**：精确匹配 → 词形还原（`-s/-es/-ed/-ing/-ly/-er/-est`、`ies→y`、双写辅音）→ 内置 100 词表兜底；结果做 LRU 缓存；
+- **用途**：预习卡片的音标与释义、阅读器点词、划词翻译的离线层、难度分级；
+- **降级**：`data/ecdict.db` 不存在时自动退回 `glossary.ts`，功能不受影响（CI 就是这种状态）；
+- **体积**：CSV 63MB → SQLite 82MB，导入约 6 秒（流式解析 + 事务批量写入）；
+- **获取**：`curl -L -o data/ecdict.csv https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv`（Windows 用 `curl.exe`）；GitHub 不可达时可 `npm pack ecdict@0.0.4` 解包取 `package/assets/ecdict.csv`；
+- **许可**：ECDICT 为 MIT，可商用；数据库文件不进 Git（`data/` 已忽略）。
 
 ---
 
@@ -287,7 +311,7 @@ LLM（OpenAI 兼容） → LibreTranslate → 内置离线词典 → 明确失�
 
 | 步骤 | 命令 | 失败意味着 |
 | --- | --- | --- |
-| 安装 | `npm ci`（Node 22，npm 缓存） | 锁文件与 `package.json` 不一致 |
+| 安装 | `npm ci`（Node 24，npm 缓存） | 锁文件与 `package.json` 不一致 |
 | 建库 | `npm run db:push` | schema 有问题 |
 | 类型检查 | `npm run typecheck` | TS 类型错误 |
 | 构建 | `npm run build` | 生产构建失败（含 `prisma generate`） |
@@ -361,7 +385,8 @@ datasource db {
 - 章节识别是启发式的：排版特殊的书可能只分出 1 章，用「手动按页划分」兜底；
 - 扫描件**不含 OCR**，只做提示（接入 `ocrmypdf` 或云 OCR 是下一步）；
 - 跨段落划线会被裁剪到起始段落（避免锚点漂移）；
-- 难词等级基于规则，非词频表 / CEFR 等级；
+- 难词等级基于 ECDICT 的考试标签与词频，不等于 CEFR 等级；
+- ECDICT 只提供词级释义，没有例句/搭配，多义项按顺序拼接；
 - 没有阅读进度同步、书签、全文搜索、发音（可基于 `Web Speech API` 低成本补上）；
 - 离线模式没有参考译文，长难句给的是结构提示与意群切分。
 
@@ -384,7 +409,8 @@ PASS  预习页生成长难句与难词 — status=200 length=40242
 PASS  预习数据包含 sentences/words/summary — sentences=6 words=18
 PASS  标记预习完成
 PASS  阅读页渲染正文并高亮难词 — status=200 length=30912
-PASS  划词翻译（离线词典降级） — offline 无处不在的，普遍存在的
+PASS  划词翻译（离线词典降级） — offline a. 无所不在的, 到处存在的, 普遍存在的
+PASS  ECDICT 词典命中（内置词表没有的词） — n. 偶然发现珍宝的运气/才能, 易遇奇缘的运气
 PASS  加入生词本
 PASS  创建划线 + 译文 — The Architecture of Atte
 PASS  阅读页显示划线标记
@@ -392,8 +418,10 @@ PASS  生词本页面显示单词
 PASS  未登录调用 API 返回 401
 PASS  PDF 文本提取干净
 
-19/19 checks passed
+20/20 checks passed
 ```
+
+> CI 里不下载词典（会跳过「ECDICT 词典命中」这一项，其余断言照常），本地导入词典后跑 `npm run e2e` 是 20/20。
 
 覆盖了验收标准要求的完整链路：**邮箱注册 → 上传 PDF → 选择章节 → 预习长难句与难词 → 进入该章阅读 → 看到难度词汇高亮 → 划词翻译**（外加生词本与未登录跳转）。
 
@@ -412,6 +440,9 @@ PASS  PDF 文本提取干净
 
 **预习页显示「离线分析模式」？**
 没有配置 `LLM_API_KEY`，或大模型调用失败（查看服务端日志）。配置后点「重新生成预习材料」。
+
+**预习里的释义很杂 / 没有例句？**
+离线模式用 ECDICT 的多义项释义（会带 `[计]`、`[法]` 等领域标注），按语境取第一个义项即可；需要例句和语境化释义，配 `LLM_API_KEY` 后重新生成预习。
 
 **中文乱码 / 字体？**
 界面用系统中文字体栈；阅读正文用 Georgia / Palatino / Songti 回退，无需额外字体文件。

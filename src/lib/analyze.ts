@@ -1,4 +1,5 @@
 import { isCommonWord } from './common-words';
+import { dictLookup } from './dictionary';
 import { glossaryLookup, guessPos } from './glossary';
 import { countWords, normalizeWord, splitSentences } from './text';
 
@@ -35,14 +36,36 @@ export function syllables(word: string): number {
 }
 
 /**
- * 0 = easy, 1..3 = increasingly difficult.
- * Heuristic: common-list membership + length + syllable count + morphology.
+ * 0 = easy, 1..4 = increasingly difficult.
+ *
+ * Primary signal: ECDICT exam tags (zk/gk/cet4 -> 1, cet6/ky -> 2, toefl/ielts
+ * -> 3, gre -> 4) and COCA/BNC frequency ranks. Words missing from ECDICT fall
+ * back to the morphology heuristic (length / syllables / suffixes).
  */
 export function difficultyScore(raw: string): number {
   const word = normalizeWord(raw);
   if (!word || word.length < 6) return 0;
   if (isCommonWord(word)) return 0;
 
+  const entry = dictLookup(word);
+  if (entry) {
+    const tags = (entry.tag ?? '').split(/\s+/).filter(Boolean);
+    if (tags.includes('gre')) return 4;
+    if (tags.includes('toefl') || tags.includes('ielts')) return 3;
+    if (tags.includes('cet6') || tags.includes('ky')) return 2;
+    if (tags.includes('cet4') || tags.includes('gk') || tags.includes('zk')) return 1;
+
+    const rank = entry.frq ?? entry.bnc ?? 0;
+    if (rank > 0) {
+      if (rank < 8000) return 1;
+      if (rank < 15000) return 2;
+      if (rank < 25000) return 3;
+      return 4;
+    }
+    return 3;
+  }
+
+  // Not in the dictionary (names, coinages): keep the old heuristic.
   let score = 0;
   if (word.length >= 8) score += 1;
   if (word.length >= 11) score += 2;

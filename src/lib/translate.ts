@@ -162,6 +162,7 @@ export async function lookupWord(word: string, context?: string): Promise<WordIn
   return {
     word: clean,
     pos: offline.pos,
+    phonetic: offline.phonetic,
     meaning: offline.zh,
     provider: 'offline',
     degraded: true,

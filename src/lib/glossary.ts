@@ -1,9 +1,12 @@
 /**
  * Offline fallback dictionary. Only used when no LLM is configured / reachable,
  * so that the whole flow (pre-study -> reading -> translate) still works offline.
- * Extend `GLOSSARY` to improve offline coverage.
+ * When the ECDICT database exists (`npm run dict:import`) it takes precedence.
  */
-export type GlossEntry = { pos: string; zh: string };
+import { dictLookup, type DictEntry } from './dictionary';
+import { truncate } from './text';
+
+export type GlossEntry = { pos: string; zh: string; phonetic?: string; definition?: string };
 
 export const GLOSSARY: Record<string, GlossEntry> = {
   ubiquitous: { pos: 'adj.', zh: '无处不在的，普遍存在的' },
@@ -117,7 +120,35 @@ export const GLOSSARY: Record<string, GlossEntry> = {
 
 const INFLECTIONS = ['s', 'es', 'ed', 'd', 'ing', 'ly', 'er', 'est'];
 
+/** ECDICT stores newlines as the literal characters `\n`. */
+function cleanTranslation(value: string): string {
+  return value
+    .replace(/\\n/g, '；')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function posFromTranslation(translation: string): string {
+  const match = translation.match(/^([a-z]{1,4})\.\s/);
+  return match ? `${match[1]}.` : '';
+}
+
+function dictEntryToGloss(entry: DictEntry | null): GlossEntry | null {
+  if (!entry) return null;
+  const zh = cleanTranslation(entry.translation ?? '') || cleanTranslation(entry.definition ?? '');
+  if (!zh) return null;
+  return {
+    pos: entry.pos || posFromTranslation(entry.translation ?? '') || '',
+    zh: truncate(zh, 240),
+    phonetic: entry.phonetic,
+    definition: entry.definition ? truncate(cleanTranslation(entry.definition), 200) : undefined,
+  };
+}
+
 export function glossaryLookup(word: string): GlossEntry | null {
+  const fromDictionary = dictEntryToGloss(dictLookup(word));
+  if (fromDictionary) return fromDictionary;
+
   const w = word.toLowerCase().replace(/[^a-z]/g, '');
   if (!w) return null;
   if (GLOSSARY[w]) return GLOSSARY[w];
@@ -144,9 +175,14 @@ export function guessPos(word: string): string {
   return '';
 }
 
-export function offlineMeaning(word: string): { pos: string; zh: string; found: boolean } {
+export function offlineMeaning(word: string): {
+  pos: string;
+  zh: string;
+  phonetic?: string;
+  found: boolean;
+} {
   const hit = glossaryLookup(word);
-  if (hit) return { pos: hit.pos, zh: hit.zh, found: true };
+  if (hit) return { pos: hit.pos, zh: hit.zh, phonetic: hit.phonetic, found: true };
   const pos = guessPos(word);
   return { pos, zh: '离线词库未收录，配置 LLM_API_KEY 后可获取准确释义', found: false };
 }

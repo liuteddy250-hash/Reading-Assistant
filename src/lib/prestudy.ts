@@ -3,6 +3,7 @@ import { HttpError } from './errors';
 import { analyzeChapter, type LongSentence } from './analyze';
 import { glossaryLookup, guessPos } from './glossary';
 import { chatJSON, llmEnabled, llmModel } from './llm';
+import { truncate } from './text';
 import type { PrestudyPayload, PrestudySentence, PrestudyWord } from './types';
 
 const MAX_CONTENT_CHARS = 9000;
@@ -56,9 +57,10 @@ function offlinePrestudy(chapter: { title: string; content: string }): PrestudyP
     return {
       word: item.word,
       pos: gloss?.pos || guessPos(item.word) || undefined,
-      meaning:
-        gloss?.zh ??
-        `离线词库未收录该词。可先按词形判断词性（${guessPos(item.word) || '未知'}），阅读时点击该词查询在线释义。`,
+      phonetic: gloss?.phonetic,
+      meaning: gloss?.zh
+        ? truncate(gloss.zh, 160)
+        : `离线词库未收录该词。可先按词形判断词性（${guessPos(item.word) || '未知'}），阅读时点击该词查询在线释义。`,
     };
   });
 
