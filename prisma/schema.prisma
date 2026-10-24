@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime     @default(now())
+  books        Book[]
+  annotations  Annotation[]
+  words        Word[]
+}
+
+model Book {
+  id         String    @id @default(cuid())
+  userId     String
+  title      String
+  author     String?
+  fileName   String
+  fileSize   Int
+  filePath   String
+  pageCount  Int
+  // ready | no_text_layer | error
+  status     String    @default("ready")
+  statusNote String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapters   Chapter[]
+
+  @@index([userId])
+}
+
+model Chapter {
+  id        String       @id @default(cuid())
+  bookId    String
+  position  Int
+  title     String
+  content   String
+  pageStart Int
+  pageEnd   Int
+  wordCount Int
+  book      Book         @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  prestudy  Prestudy?
+  notes     Annotation[]
+  words     Word[]
+
+  @@unique([bookId, position])
+  @@index([bookId])
+}
+
+model Prestudy {
+  id        String    @id @default(cuid())
+  chapterId String    @unique
+  // ready | failed
+  status    String    @default("ready")
+  // llm | offline
+  source    String    @default("offline")
+  model     String?
+  payload   String
+  studiedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  chapter   Chapter   @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+}
+
+model Annotation {
+  id          String   @id @default(cuid())
+  userId      String
+  chapterId   String
+  // underline | translation
+  kind        String   @default("underline")
+  quote       String
+  paragraph   Int
+  startInP    Int
+  translation String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter     Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@index([userId, chapterId])
+}
+
+model Word {
+  id        String   @id @default(cuid())
+  userId    String
+  chapterId String?
+  term      String
+  surface   String
+  context   String?
+  meaning   String?
+  phonetic  String?
+  pos       String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter   Chapter? @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, term])
+  @@index([userId])
+}

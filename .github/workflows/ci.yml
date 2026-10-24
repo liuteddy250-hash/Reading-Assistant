@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-e2e:
+    name: Build & E2E (offline mode)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      # SQLite path is resolved relative to prisma/schema.prisma -> prisma/dev.db
+      DATABASE_URL: 'file:./dev.db'
+      # CI-only signing key; never reuse this outside the runner.
+      AUTH_SECRET: 'ci-only-secret-0123456789abcdef0123456789abcdef'
+      NEXT_TELEMETRY_DISABLED: '1'
+      # Empty key => deterministic offline mode (bundled dictionary + rules).
+      # Add LLM_API_KEY as a repository secret and map it here to test the LLM path too.
+      LLM_API_KEY: ''
+      LIBRETRANSLATE_URL: ''
+      MAX_UPLOAD_MB: '50'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Initialize database
+        run: npm run db:push
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Generate sample PDF
+        run: npm run sample:pdf
+
+      - name: Start server
+        run: |
+          nohup npm start > server.log 2>&1 &
+          echo $! > server.pid
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/login > /dev/null; then
+              echo "server ready after ${i} attempt(s)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "server did not become ready in 120s"
+          tail -n 120 server.log
+          exit 1
+
+      - name: Run E2E acceptance test
+        run: npm run e2e 2>&1 | tee e2e.log
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill "$(cat server.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs
+          path: |
+            server.log
+            e2e.log
+          if-no-files-found: ignore
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "### E2E result" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f e2e.log ]; then
+            tail -n 25 e2e.log >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "e2e.log not found (test step did not run)" >> "$GITHUB_STEP_SUMMARY"
+          fi
