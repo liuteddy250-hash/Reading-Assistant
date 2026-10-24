@@ -174,3 +174,32 @@ export function highlightIndex(content: string): Record<string, { level: number;
   }
   return index;
 }
+
+const analysisCache = new Map<string, ChapterAnalysis>();
+const ANALYSIS_CACHE_LIMIT = 120;
+
+/**
+ * Chapter content is immutable for a given chapter id (re-splitting creates new
+ * rows), so the analysis can be memoised safely.
+ */
+export function analyzeChapterCached(chapterId: string, content: string): ChapterAnalysis {
+  const hit = analysisCache.get(chapterId);
+  if (hit) return hit;
+
+  if (analysisCache.size >= ANALYSIS_CACHE_LIMIT) analysisCache.clear();
+  const result = analyzeChapter(content);
+  analysisCache.set(chapterId, result);
+  return result;
+}
+
+/** Cached variant of {@link highlightIndex}. */
+export function highlightIndexFor(
+  chapterId: string,
+  content: string,
+): Record<string, { level: number; meaning?: string }> {
+  const index: Record<string, { level: number; meaning?: string }> = {};
+  for (const item of analyzeChapterCached(chapterId, content).hardWords) {
+    if (item.level >= 2) index[item.word] = { level: item.level, meaning: item.meaning };
+  }
+  return index;
+}

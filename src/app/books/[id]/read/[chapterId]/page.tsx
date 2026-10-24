@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { Reader } from '@/components/Reader';
-import { highlightIndex } from '@/lib/analyze';
+import { highlightIndexFor } from '@/lib/analyze';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
@@ -34,7 +34,7 @@ export default async function ReadPage({
     redirect(`/books/${id}/prestudy/${chapterId}`);
   }
 
-  const [annotations, neighbors] = await Promise.all([
+  const [annotations, neighbors, progress] = await Promise.all([
     prisma.annotation.findMany({
       where: { userId: session.uid, chapterId },
       orderBy: { createdAt: 'asc' },
@@ -45,6 +45,10 @@ export default async function ReadPage({
         position: { in: [chapter.position - 1, chapter.position + 1] },
       },
       select: { id: true, position: true },
+    }),
+    prisma.readingProgress.findUnique({
+      where: { userId_chapterId: { userId: session.uid, chapterId } },
+      select: { percent: true },
     }),
   ]);
 
@@ -69,10 +73,11 @@ export default async function ReadPage({
         startInP: annotation.startInP,
         translation: annotation.translation,
       }))}
-      hardIndex={highlightIndex(chapter.content)}
+      hardIndex={highlightIndexFor(chapter.id, chapter.content)}
       studied={Boolean(chapter.prestudy?.studiedAt)}
       prevId={prev?.id ?? null}
       nextId={next?.id ?? null}
+      initialProgress={progress?.percent ?? 0}
     />
   );
 }

@@ -16,6 +16,7 @@ model User {
   books        Book[]
   annotations  Annotation[]
   words        Word[]
+  progress     ReadingProgress[]
 }
 
 model Book {
@@ -51,9 +52,25 @@ model Chapter {
   prestudy  Prestudy?
   notes     Annotation[]
   words     Word[]
+  progress  ReadingProgress[]
 
   @@unique([bookId, position])
   @@index([bookId])
+}
+
+model ReadingProgress {
+  id        String   @id @default(cuid())
+  userId    String
+  chapterId String
+  // 0..100, based on scroll position
+  percent   Float    @default(0)
+  completed Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter   Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chapterId])
+  @@index([userId])
 }
 
 model Prestudy {

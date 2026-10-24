@@ -4,6 +4,8 @@
 
 技术栈：**Next.js 15（App Router）+ TypeScript + Prisma 6 + SQLite + unpdf + ECDICT**，单体应用，一条命令即可跑通；翻译与讲解使用 **OpenAI 兼容大模型接口**，未配置密钥时自动降级为 **ECDICT 离线词典（77 万词条）+ 规则分析**，全流程仍可走通。
 
+当前版本 **1.1.0**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+
 ---
 
 ## 1. 已实现功能
@@ -13,8 +15,9 @@
 | 邮箱注册 / 登录 / 独立数据 | 邮箱 + 密码（bcrypt 10 轮），JWT（jose HS256）写入 httpOnly Cookie，7 天有效；所有书籍、章节、划线、生词都按 `userId` 隔离 |
 | 上传 PDF 入个人书库 | `multipart/form-data` 上传，校验扩展名 / 大小 / `%PDF-` 魔数；文件落盘到 `STORAGE_DIR`，文本与章节入库 |
 | 章节划分 | 优先识别 `Chapter N` / `Part N` / `第 N 章` / `Prologue` 等标题，其次识别「短标题行 + 上下空行」，最后按页数分块；支持**手动按页码范围**重划 |
-| 课前预习 | 每章进入前自动生成：中文导读、4–6 个长难句（原文 / 意群切分 / 结构拆解 / 参考译文）、10–18 个难词（音标 / 词性 / 释义 / 例句）；预习未完成时阅读页会被拦截 |
-| 阅读模式 | 难度词自动高亮（两级颜色，点击查词）、可开关高亮、字号调节、上一章 / 下一章 |
+| 课前预习 | 每章进入前自动生成：中文导读、4–6 个长难句（原文 / 意群切分 / 结构拆解 / 参考译文）、10–18 个难词（音标 / 词性 / 释义 / 例句）；预习未完成时阅读页会被拦截。配置大模型时改为**客户端生成**（页面秒开、显示等待秒数与重试），离线模式仍内联生成 |
+| 阅读模式 | 难度词自动高亮（两级颜色）、可开关高亮、字号调节、上一章 / 下一章；**单击任意单词**弹出词典卡（音标 / 词性 / 考试标签 / 词频 / 柯林斯星级 / 英文释义） |
+| 阅读进度 | 滚动位置自动保存（节流 + 离开页面兜底），章节列表显示已读百分比，书库顶部「继续阅读」直达上次位置 |
 | 划线 + 翻译 | 选中任意片段弹出工具条：翻译（结果自动保存为划线 + 译文）、仅下划线、加入生词本；已划线文本点击可回看译文、删除 |
 | 生词本 | 双击单词直接收藏，或选中片段收藏；独立页面支持搜索、删除、导出 CSV，并记录来源书籍/章节与上下文 |
 | 登录保护 | `middleware.ts` 校验 JWT，未登录访问 `/library`、`/books/*`、`/vocabulary` 会 307 跳转 `/login?next=...`，登录后回到原页面 |
@@ -65,6 +68,8 @@ npm run dict:import
 
 npm run dev         # http://localhost:3000
 ```
+
+> 已部署过 v1.0 的旧数据库？执行一次 `npm run db:init`（幂等，只补建 `ReadingProgress` 表）或 `npm run db:push` 即可，无需迁移数据。
 
 生成 `AUTH_SECRET`：
 
@@ -140,7 +145,8 @@ english-reader/
 │  ├─ import-ecdict.mjs          # ECDICT CSV → SQLite（流式解析 + 事务批量写入）
 │  ├─ make-sample-pdf.mjs        # 纯手写 PDF 生成器（无第三方依赖）
 │  ├─ smoke-db.mjs               # Prisma 读写冒烟测试
-│  └─ e2e.mjs                    # 端到端验收（20 项断言）
+│  ├─ check-llm-fallback.mjs     # 大模型不可达时的降级验证
+│  └─ e2e.mjs                    # 端到端验收（25 项断言）
 ├─ src/
 │  ├─ middleware.ts              # 未登录跳转登录页
 │  ├─ app/
@@ -164,14 +170,16 @@ english-reader/
 │  │     ├─ vocabulary/route.ts                # 生词列表 / 收藏
 │  │     ├─ vocabulary/[id]/route.ts
 │  │     ├─ annotations/route.ts               # 划线 / 译文
-│  │     └─ annotations/[id]/route.ts
+│  │     ├─ annotations/[id]/route.ts
+│  │     └─ progress/route.ts                   # 阅读进度
 │  ├─ components/
 │  │  ├─ Nav.tsx / LogoutButton.tsx
 │  │  ├─ AuthForm.tsx
 │  │  ├─ UploadPanel.tsx
 │  │  ├─ BookTools.tsx            # 重划章节 / 删除书籍
 │  │  ├─ PrestudyView.tsx
-│  │  ├─ Reader.tsx               # 阅读器核心（高亮 / 选区 / 弹层）
+│  │  ├─ PrestudyRunner.tsx       # 大模型预习的客户端生成 / 重试
+│  │  ├─ Reader.tsx               # 阅读器核心（高亮 / 查词 / 选区 / 进度）
 │  │  └─ VocabTable.tsx
 │  └─ lib/
 │     ├─ db.ts                    # Prisma 单例
@@ -245,6 +253,7 @@ LLM（OpenAI 兼容） → LibreTranslate → ECDICT 离线词典 → 内置小�
 ```
 
 - 单词走词典模式（音标 / 词性 / 释义），整句走向翻译模式；
+- **单词查询优先走 ECDICT**（免费、即时），词典未收录才调用大模型——单击任意词不会消耗 token；
 - 任一层失败都不会 500：返回 `degraded: true` + 中文提示，前端在弹层里用橙色小字展示「已降级」；
 - 完全不可用时仍可保存划线 / 生词，不阻塞阅读。
 
@@ -263,6 +272,14 @@ LLM（OpenAI 兼容） → LibreTranslate → ECDICT 离线词典 → 内置小�
 - **体积**：CSV 63MB → SQLite 82MB，导入约 6 秒（流式解析 + 事务批量写入）；
 - **获取**：`curl -L -o data/ecdict.csv https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv`（Windows 用 `curl.exe`）；GitHub 不可达时可 `npm pack ecdict@0.0.4` 解包取 `package/assets/ecdict.csv`；
 - **许可**：ECDICT 为 MIT，可商用；数据库文件不进 Git（`data/` 已忽略）。
+
+### 6.8 任意词查词与阅读进度（v1.1）
+
+- **任意词查词**：阅读器不把每个词包成 `<span>`，而是用 `caretRangeFromPoint`（Firefox 为 `caretPositionFromPoint`）在点击位置还原单词，再按需请求 `/api/translate` —— 长章节不会多出上千个 DOM 节点；
+- **弹层信息**：音标、词性、难度、考试标签（中考/高考/四六级/考研/托福/雅思/GRE）、COCA 词频排名、柯林斯星级、英文释义；
+- **进度上报**：滚动时每 2.5s 上报一次百分比，组件卸载时兜底再报一次（`keepalive`）；服务端按 `(userId, chapterId)` upsert，重复上报只更新一行；
+- **续读**：阅读页挂载后按保存的百分比恢复滚动位置；章节列表显示「已读 x%」，书库顶部显示「上次读到」；
+- **完成判定**：`percent ≥ 95` 自动置 `completed`，后续滚动不会把已完成改回未完成。
 
 ---
 
@@ -300,6 +317,8 @@ LLM（OpenAI 兼容） → LibreTranslate → ECDICT 离线词典 → 内置小�
 | DELETE | `/api/vocabulary/:id` | 删除生词 |
 | GET / POST | `/api/annotations` | 章节划线列表 / 新建划线或译文 |
 | DELETE | `/api/annotations/:id` | 删除划线 |
+| POST | `/api/progress` | 保存阅读进度 `{chapterId, percent}`（0–100，≥95 自动标记完成） |
+| DELETE | `/api/annotations/:id` | 删除划线 |
 
 ---
 
@@ -317,8 +336,9 @@ LLM（OpenAI 兼容） → LibreTranslate → ECDICT 离线词典 → 内置小�
 | 构建 | `npm run build` | 生产构建失败（含 `prisma generate`） |
 | 造样例书 | `npm run sample:pdf` | PDF 生成脚本异常 |
 | 起服务 | `npm start` + 轮询 `/login`（最多 120s） | 服务启动失败（会打印 `server.log` 尾部） |
-| 验收 | `npm run e2e` | 19 项断言任一失败 |
-| 收尾 | 停止进程、上传 `ci-logs`、写 Job Summary | — |
+| 验收 | `npm run e2e` | 25 项断言任一失败 |
+| 大模型兜底 | 在 3001 端口再起一个指向不可达 LLM 的实例，跑 `check-llm-fallback` | 非阻塞预习或降级逻辑回归 |
+| 收尾 | 停止两个进程、上传 `ci-logs`、写 Job Summary | — |
 
 设计要点：
 
@@ -385,6 +405,8 @@ datasource db {
 - 章节识别是启发式的：排版特殊的书可能只分出 1 章，用「手动按页划分」兜底；
 - 扫描件**不含 OCR**，只做提示（接入 `ocrmypdf` 或云 OCR 是下一步）；
 - 跨段落划线会被裁剪到起始段落（避免锚点漂移）；
+- 单击查词依赖 `caretRangeFromPoint` / `caretPositionFromPoint`（Chrome、Safari、Firefox 均支持；过旧浏览器会退化为只能查高亮词）；
+- 阅读进度按滚动比例估算，最后一屏较长时可能提前达到 100%；
 - 难词等级基于 ECDICT 的考试标签与词频，不等于 CEFR 等级；
 - ECDICT 只提供词级释义，没有例句/搭配，多义项按顺序拼接；
 - 没有阅读进度同步、书签、全文搜索、发音（可基于 `Web Speech API` 低成本补上）；
@@ -405,23 +427,28 @@ PASS  上传 PDF 并自动划分章节 — status=201 chapters=3
 PASS  书籍详情页显示章节
 PASS  章节接口返回正文
 PASS  未预习直接阅读被拦截 — 307 /books/.../prestudy/...
-PASS  预习页生成长难句与难词 — status=200 length=40242
+PASS  预习页生成长难句与难词 — status=200 length=25520
 PASS  预习数据包含 sentences/words/summary — sentences=6 words=18
 PASS  标记预习完成
-PASS  阅读页渲染正文并高亮难词 — status=200 length=30912
+PASS  阅读页渲染正文并高亮难词 — status=200 length=19576
 PASS  划词翻译（离线词典降级） — offline a. 无所不在的, 到处存在的, 普遍存在的
 PASS  ECDICT 词典命中（内置词表没有的词） — n. 偶然发现珍宝的运气/才能, 易遇奇缘的运气
-PASS  加入生词本
+PASS  任意词查词返回音标与考试标签 — 'ɑ:kitektʃә gk,cet4,cet6,ky,toefl,ielts
+PASS  加入生词本并自动带释义 — a. 无所不在的, 到处存在的, 普遍存在的
 PASS  创建划线 + 译文 — The Architecture of Atte
 PASS  阅读页显示划线标记
+PASS  保存阅读进度 — percent=42
+PASS  书籍页显示已读进度与继续阅读
+PASS  书库页显示上次阅读入口
 PASS  生词本页面显示单词
 PASS  未登录调用 API 返回 401
+PASS  未登录保存进度返回 401
 PASS  PDF 文本提取干净
 
-20/20 checks passed
+25/25 checks passed
 ```
 
-> CI 里不下载词典（会跳过「ECDICT 词典命中」这一项，其余断言照常），本地导入词典后跑 `npm run e2e` 是 20/20。
+> CI 里不下载词典（会跳过「ECDICT 词典命中」「任意词查词音标/标签」两项，其余断言照常），本地导入词典后跑 `npm run e2e` 是 25/25。
 
 覆盖了验收标准要求的完整链路：**邮箱注册 → 上传 PDF → 选择章节 → 预习长难句与难词 → 进入该章阅读 → 看到难度词汇高亮 → 划词翻译**（外加生词本与未登录跳转）。
 
@@ -443,6 +470,9 @@ PASS  PDF 文本提取干净
 
 **预习里的释义很杂 / 没有例句？**
 离线模式用 ECDICT 的多义项释义（会带 `[计]`、`[法]` 等领域标注），按语境取第一个义项即可；需要例句和语境化释义，配 `LLM_API_KEY` 后重新生成预习。
+
+**怎么确认大模型配置真的生效/降级正常？**
+`npm run check:llm`（需先用不可达的 `LLM_BASE_URL` 起服务）：它会验证预习页不阻塞、生成失败自动回退离线、以及单击查词仍走词典。CI 里也会跑这套检查。
 
 **中文乱码 / 字体？**
 界面用系统中文字体栈；阅读正文用 Georgia / Palatino / Songti 回退，无需额外字体文件。

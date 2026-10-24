@@ -25,6 +25,7 @@ type Props = {
   studied: boolean;
   prevId: string | null;
   nextId: string | null;
+  initialProgress: number;
 };
 
 type Anchor = { paragraph: number; start: number; end: number; text: string };
@@ -36,8 +37,15 @@ type Panel = {
   quote: string;
   anchor?: Anchor;
   word?: string;
+  paragraph?: number;
   level?: number;
   meaning?: string;
+  phonetic?: string;
+  pos?: string;
+  tags?: string[];
+  rank?: number;
+  collins?: number;
+  definition?: string;
   annotation?: ReaderAnnotation;
   translation?: string | null;
   loading?: boolean;
@@ -50,9 +58,24 @@ type TranslateResponse = {
   meaning?: string;
   pos?: string;
   phonetic?: string;
+  tags?: string[];
+  rank?: number;
+  collins?: number;
+  definition?: string;
   degraded?: boolean;
   message?: string;
   error?: string;
+};
+
+const TAG_LABELS: Record<string, string> = {
+  zk: '中考',
+  gk: '高考',
+  cet4: '四级',
+  cet6: '六级',
+  ky: '考研',
+  toefl: '托福',
+  ielts: '雅思',
+  gre: 'GRE',
 };
 
 function elementOf(node: Node | null): HTMLElement | null {
@@ -66,6 +89,49 @@ function rectOf(range: Range): Rect {
   return { top: rect.top, left: rect.left, bottom: rect.bottom, right: rect.right };
 }
 
+/**
+ * Resolves the word under the pointer without wrapping every token in a span.
+ * Chrome/Safari expose caretRangeFromPoint, Firefox exposes caretPositionFromPoint.
+ */
+function caretWordFromPoint(x: number, y: number): { word: string; paragraph: number } | null {
+  const doc = document as Document & {
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  };
+
+  let node: Node | null = null;
+  let offset = 0;
+
+  if (typeof doc.caretRangeFromPoint === 'function') {
+    const range = doc.caretRangeFromPoint(x, y);
+    if (range) {
+      node = range.startContainer;
+      offset = range.startOffset;
+    }
+  } else if (typeof doc.caretPositionFromPoint === 'function') {
+    const position = doc.caretPositionFromPoint(x, y);
+    if (position) {
+      node = position.offsetNode;
+      offset = position.offset;
+    }
+  }
+
+  if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+
+  const text = node.textContent ?? '';
+  let start = Math.min(offset, text.length);
+  let end = start;
+
+  while (start > 0 && /[A-Za-z'’-]/.test(text[start - 1])) start -= 1;
+  while (end < text.length && /[A-Za-z'’-]/.test(text[end])) end += 1;
+
+  const word = text.slice(start, end).replace(/^[’'-]+|[’'-]+$/g, '');
+  if (!word || !/[A-Za-z]/.test(word)) return null;
+
+  const paragraphEl = elementOf(node)?.closest('[data-p]') as HTMLElement | null;
+  return { word, paragraph: paragraphEl ? Number(paragraphEl.dataset.p) : -1 };
+}
+
 export function Reader({
   bookId,
   bookTitle,
@@ -75,6 +141,7 @@ export function Reader({
   studied,
   prevId,
   nextId,
+  initialProgress,
 }: Props) {
   const paragraphs = useMemo(() => splitParagraphs(chapter.content), [chapter.content]);
   const [anns, setAnns] = useState<ReaderAnnotation[]>(annotations);
@@ -82,12 +149,59 @@ export function Reader({
   const [showHard, setShowHard] = useState(true);
   const [fontSize, setFontSize] = useState(19);
   const [toast, setToast] = useState<string | null>(null);
+  const [progress, setProgress] = useState(initialProgress);
   const articleRef = useRef<HTMLElement>(null);
+  const progressRef = useRef(initialProgress);
+  const restoredRef = useRef(false);
 
   const notify = useCallback((message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(null), 2200);
   }, []);
+
+  // Restore the scroll position of the previous session.
+  useEffect(() => {
+    if (restoredRef.current || initialProgress <= 1) return;
+    restoredRef.current = true;
+    const timer = window.setTimeout(() => {
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      if (max > 0) window.scrollTo({ top: (initialProgress / 100) * max });
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [initialProgress]);
+
+  // Persist reading progress while scrolling (throttled) and on unmount.
+  useEffect(() => {
+    let lastSent = 0;
+
+    function save(value: number) {
+      void fetch('/api/progress', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ chapterId: chapter.id, percent: value, completed: value >= 95 }),
+        keepalive: true,
+      }).catch(() => {});
+    }
+
+    function onScroll() {
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      const percent = max > 0 ? Math.min(100, Math.max(0, (window.scrollY / max) * 100)) : 100;
+      progressRef.current = percent;
+      setProgress(percent);
+
+      const now = Date.now();
+      if (now - lastSent > 2500) {
+        lastSent = now;
+        save(percent);
+      }
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      save(progressRef.current);
+    };
+  }, [chapter.id]);
 
   useEffect(() => {
     if (!panel) return;
@@ -159,16 +273,9 @@ export function Reader({
       const anchor = anchorFromRange(range);
       const word = (anchor?.text ?? '').replace(/[^A-Za-z'’-]/g, '');
       if (word) {
-        const level = hardIndex[normalizeWord(word)]?.level;
+        const rect = rectOf(range);
         void addWord(word, anchor ? paragraphs[anchor.paragraph] : undefined);
-        setPanel({
-          kind: 'word',
-          rect: rectOf(range),
-          quote: word,
-          word,
-          level,
-          meaning: hardIndex[normalizeWord(word)]?.meaning,
-        });
+        openWordPanel(word, anchor?.paragraph ?? -1, (rect.left + rect.right) / 2, rect.bottom);
       }
       return;
     }
@@ -178,9 +285,53 @@ export function Reader({
     setPanel({ kind: 'selection', rect: rectOf(range), quote: anchor.text, anchor });
   }
 
+  async function fetchWord(word: string, paragraph: number) {
+    try {
+      const data = await translateText(word, paragraph >= 0 ? paragraphs[paragraph] : undefined);
+      setPanel((prev) =>
+        prev && prev.kind === 'word' && prev.word === word
+          ? {
+              ...prev,
+              loading: false,
+              meaning: data.meaning ?? data.translation ?? prev.meaning,
+              phonetic: data.phonetic,
+              pos: data.pos,
+              tags: data.tags,
+              rank: data.rank,
+              collins: data.collins,
+              definition: data.definition,
+              note: data.degraded ? data.message : undefined,
+            }
+          : prev,
+      );
+    } catch (error) {
+      setPanel((prev) =>
+        prev && prev.kind === 'word' && prev.word === word
+          ? { ...prev, loading: false, note: (error as Error).message }
+          : prev,
+      );
+    }
+  }
+
+  function openWordPanel(word: string, paragraph: number, x: number, y: number) {
+    const index = hardIndex[normalizeWord(word)];
+    setPanel({
+      kind: 'word',
+      rect: { top: y, left: x, bottom: y, right: x },
+      quote: word,
+      word,
+      paragraph,
+      level: index?.level,
+      meaning: index?.meaning,
+      loading: true,
+    });
+    void fetchWord(word, paragraph);
+  }
+
   function handleArticleClick(event: ReactMouseEvent) {
     const target = event.target as HTMLElement | null;
     if (!target) return;
+    if (target.closest('.popup')) return;
 
     const annotationEl = target.closest('[data-ann]');
     if (annotationEl) {
@@ -198,20 +349,14 @@ export function Reader({
       }
     }
 
-    const wordEl = target.closest('[data-word]');
-    if (wordEl) {
-      const word = wordEl.getAttribute('data-word') ?? '';
-      if (!word) return;
-      const index = hardIndex[normalizeWord(word)];
-      setPanel({
-        kind: 'word',
-        rect: wordEl.getBoundingClientRect(),
-        quote: word,
-        word,
-        level: index?.level,
-        meaning: index?.meaning,
-      });
-    }
+    // Drag-selection is handled by handleMouseUp; don't override it with a word popup.
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
+
+    // Kindle-style: single click on any word opens its dictionary card.
+    const hit = caretWordFromPoint(event.clientX, event.clientY);
+    if (!hit) return;
+    openWordPanel(hit.word, hit.paragraph, event.clientX, event.clientY);
   }
 
   async function translateText(text: string, context?: string): Promise<TranslateResponse> {
@@ -303,18 +448,9 @@ export function Reader({
     if (!panel || panel.kind !== 'word' || !panel.word) return;
     const current = panel;
     const word = panel.word;
+    const paragraph = panel.paragraph ?? -1;
     setPanel({ ...current, loading: true, note: undefined });
-    try {
-      const data = await translateText(word, paragraphs[0]);
-      setPanel({
-        ...current,
-        loading: false,
-        meaning: data.meaning ?? data.translation ?? undefined,
-        note: data.degraded ? data.message : undefined,
-      });
-    } catch (error) {
-      setPanel({ ...current, loading: false, note: (error as Error).message });
-    }
+    await fetchWord(word, paragraph);
   }
 
   async function translateAnnotationPanel() {
@@ -440,6 +576,8 @@ export function Reader({
             {bookTitle}
           </span>
           <span className="separator" />
+          <span className="muted tiny">已读 {Math.round(progress)}%</span>
+          <span className="separator" />
           <button
             type="button"
             className="btn ghost sm"
@@ -492,7 +630,7 @@ export function Reader({
             <div className="tiny muted" style={{ fontFamily: 'var(--font-ui)' }}>
               {chapter.wordCount.toLocaleString()} 词
               {studied ? ' · 预习已完成' : ' · 未完成预习'}
-              {' · 选中文字可翻译 / 下划线；双击单词加入生词本'}
+              {' · 单击任意单词查词，选中文字可翻译 / 下划线，双击加入生词本'}
             </div>
           </header>
           {renderedParagraphs}
@@ -566,17 +704,33 @@ export function Reader({
 
           <p className="popup-quote">{panel.quote}</p>
 
-          {panel.kind === 'word' && panel.level ? (
-            <div className="row" style={{ marginTop: 6 }}>
-              <span className={`badge ${panel.level >= 3 ? 'warn' : 'info'}`}>
-                难度 {panel.level}/3
-              </span>
+          {panel.kind === 'word' ? (
+            <div className="row" style={{ marginTop: 6, gap: 6 }}>
+              {panel.phonetic ? <span className="muted tiny">{panel.phonetic}</span> : null}
+              {panel.pos ? <span className="word-pos">{panel.pos}</span> : null}
+              {panel.level ? (
+                <span className={`badge ${panel.level >= 3 ? 'warn' : 'info'}`}>
+                  难度 {panel.level}/3
+                </span>
+              ) : null}
+              {(panel.tags ?? []).map((tag) => (
+                <span className="badge" key={tag}>
+                  {TAG_LABELS[tag] ?? tag}
+                </span>
+              ))}
+              {panel.rank ? <span className="badge">词频 #{panel.rank}</span> : null}
+              {panel.collins ? <span className="badge">柯林斯 {panel.collins}★</span> : null}
             </div>
           ) : null}
 
           {panel.meaning ? <div className="popup-translation">{panel.meaning}</div> : null}
           {panel.translation ? (
             <div className="popup-translation">{panel.translation}</div>
+          ) : null}
+          {panel.kind === 'word' && panel.definition ? (
+            <div className="tiny muted" style={{ marginTop: 8, lineHeight: 1.55 }}>
+              {panel.definition}
+            </div>
           ) : null}
 
           {panel.loading ? (

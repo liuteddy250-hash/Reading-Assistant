@@ -1,3 +1,4 @@
+import { dictLookup, type DictEntry } from './dictionary';
 import { glossaryLookup, guessPos, offlineMeaning } from './glossary';
 import { chatJSON, chatText, llmEnabled } from './llm';
 
@@ -14,6 +15,12 @@ export type WordInfo = {
   pos?: string;
   meaning: string;
   example?: string;
+  /** ECDICT exam tags: zk, gk, cet4, cet6, ky, toefl, ielts, gre */
+  tags?: string[];
+  /** COCA frequency rank (lower = more common) */
+  rank?: number;
+  collins?: number;
+  definition?: string;
   provider: 'llm' | 'offline';
   degraded: boolean;
 };
@@ -125,10 +132,38 @@ export async function translateText(text: string, context?: string): Promise<Tra
   };
 }
 
+function offlineWordInfo(word: string, entry: DictEntry | null): WordInfo {
+  const offline = offlineMeaning(word);
+  const definition = entry?.definition
+    ? entry.definition.replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
+    : undefined;
+
+  return {
+    word,
+    pos: offline.pos,
+    phonetic: offline.phonetic,
+    meaning: offline.zh,
+    provider: 'offline',
+    degraded: true,
+    tags: entry?.tag ? entry.tag.split(/\s+/).filter(Boolean) : undefined,
+    rank: entry?.frq ?? entry?.bnc ?? undefined,
+    collins: entry?.collins,
+    definition,
+  };
+}
+
 export async function lookupWord(word: string, context?: string): Promise<WordInfo> {
   const clean = word.replace(/[^A-Za-z'’-]/g, '');
   if (!clean) {
     return { word, meaning: '无效的单词', provider: 'offline', degraded: true };
+  }
+
+  // Dictionary first: single-word lookups are free and instant. The LLM is
+  // reserved for sentences / long-sentence explanations, so "click any word"
+  // never burns tokens.
+  const entry = dictLookup(clean);
+  if (entry && (entry.translation || entry.definition)) {
+    return offlineWordInfo(clean, entry);
   }
 
   if (llmEnabled()) {
@@ -158,15 +193,7 @@ export async function lookupWord(word: string, context?: string): Promise<WordIn
     }
   }
 
-  const offline = offlineMeaning(clean);
-  return {
-    word: clean,
-    pos: offline.pos,
-    phonetic: offline.phonetic,
-    meaning: offline.zh,
-    provider: 'offline',
-    degraded: true,
-  };
+  return offlineWordInfo(clean, entry);
 }
 
 export function offlineGlossPreview(word: string): string | undefined {

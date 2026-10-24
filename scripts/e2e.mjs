@@ -203,14 +203,42 @@ const second = chapters[1] ?? chapters[0];
   }
 }
 
-// 14) Add a vocabulary entry (double-click behaviour).
+// 13c) Any word can be looked up (Kindle-style click), with phonetic + exam tags.
+//      Requires the ECDICT database; CI runs without it and skips this assertion.
+{
+  if (existsSync(path.join(process.cwd(), 'data', 'ecdict.db'))) {
+    const response = await request('/api/translate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'architecture', mode: 'word' }),
+    });
+    const data = await json(response);
+    check(
+      '任意词查词返回音标与考试标签',
+      response.status === 200 &&
+        Boolean(data?.phonetic) &&
+        Array.isArray(data?.tags) &&
+        data.tags.length > 0,
+      `${data?.phonetic ?? '-'} ${(data?.tags ?? []).join(',')}`,
+    );
+  } else {
+    console.log('SKIP  任意词查词（无 ECDICT 词典，回退内置词表）');
+  }
+}
+
+// 14) Add a vocabulary entry (double-click behaviour) and auto-fill its meaning.
 {
   const response = await request('/api/vocabulary', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ term: 'ubiquitous', chapterId: first.id, context: 'access to information almost ubiquitous' }),
   });
-  check('加入生词本', response.status === 201);
+  const data = await json(response);
+  check(
+    '加入生词本并自动带释义',
+    response.status === 201 && Boolean(data?.word?.meaning),
+    String(data?.word?.meaning ?? '').slice(0, 40),
+  );
 }
 
 // 15) Create an underline + translation annotation aligned with paragraph 1.
@@ -245,6 +273,29 @@ const second = chapters[1] ?? chapters[0];
   check('阅读页显示划线标记', response.status === 200 && html.includes('ann-mark'));
 }
 
+// 16b) Reading progress is persisted and surfaced in the book/library pages.
+{
+  const response = await request('/api/progress', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ chapterId: first.id, percent: 42 }),
+  });
+  const data = await json(response);
+  check(
+    '保存阅读进度',
+    response.status === 200 && Math.round(Number(data?.percent)) === 42,
+    `percent=${data?.percent}`,
+  );
+
+  const page = await request(`/books/${bookId}`);
+  const html = await page.text();
+  check('书籍页显示已读进度与继续阅读', html.includes('已读 42%') && html.includes('继续阅读'));
+
+  const library = await request('/library');
+  const libraryHtml = await library.text();
+  check('书库页显示上次阅读入口', library.status === 200 && libraryHtml.includes('上次读到'));
+}
+
 // 17) Vocabulary page lists the saved word.
 {
   const response = await request('/vocabulary');
@@ -258,6 +309,13 @@ const second = chapters[1] ?? chapters[0];
   cookie = '';
   const response = await request('/api/books');
   check('未登录调用 API 返回 401', response.status === 401);
+
+  const progressResponse = await request('/api/progress', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ chapterId: first.id, percent: 10 }),
+  });
+  check('未登录保存进度返回 401', progressResponse.status === 401);
   cookie = saved;
 }
 

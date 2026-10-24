@@ -2,6 +2,7 @@ import { requireUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getOwnedChapter } from '@/lib/access';
 import { HttpError, errorResponse } from '@/lib/errors';
+import { offlineMeaning } from '@/lib/glossary';
 import { truncate } from '@/lib/text';
 
 export const runtime = 'nodejs';
@@ -46,6 +47,18 @@ export async function POST(request: Request) {
       chapterId = body.chapterId;
     }
 
+    // Fill in meaning/phonetic automatically when the reader only sends a term
+    // (double-click flow), using the offline dictionary as a hint.
+    const isSingleWord = /^[A-Za-z][A-Za-z'’-]*$/.test(surface);
+    const hint = isSingleWord ? offlineMeaning(surface) : null;
+    const autoMeaning = hint?.found ? truncate(hint.zh, 500) : null;
+    const autoPhonetic = hint?.found && hint.phonetic ? truncate(hint.phonetic, 100) : null;
+    const autoPos = hint?.found && hint.pos ? truncate(hint.pos, 20) : null;
+
+    const meaning = body.meaning ? truncate(String(body.meaning), 500) : autoMeaning;
+    const phonetic = body.phonetic ? truncate(String(body.phonetic), 100) : autoPhonetic;
+    const pos = body.pos ? truncate(String(body.pos), 20) : autoPos;
+
     const word = await prisma.word.upsert({
       where: { userId_term: { userId: user.uid, term } },
       create: {
@@ -54,17 +67,17 @@ export async function POST(request: Request) {
         term,
         surface,
         context: body.context ? truncate(String(body.context), 500) : null,
-        meaning: body.meaning ? truncate(String(body.meaning), 500) : null,
-        phonetic: body.phonetic ? truncate(String(body.phonetic), 100) : null,
-        pos: body.pos ? truncate(String(body.pos), 20) : null,
+        meaning,
+        phonetic,
+        pos,
       },
       update: {
         surface,
         chapterId: chapterId ?? undefined,
         context: body.context ? truncate(String(body.context), 500) : undefined,
-        meaning: body.meaning ? truncate(String(body.meaning), 500) : undefined,
-        phonetic: body.phonetic ? truncate(String(body.phonetic), 100) : undefined,
-        pos: body.pos ? truncate(String(body.pos), 20) : undefined,
+        meaning: meaning ?? undefined,
+        phonetic: phonetic ?? undefined,
+        pos: pos ?? undefined,
       },
     });
 

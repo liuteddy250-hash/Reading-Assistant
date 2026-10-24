@@ -20,7 +20,13 @@ export default async function BookDetailPage({
     include: {
       chapters: {
         orderBy: { position: 'asc' },
-        include: { prestudy: { select: { studiedAt: true, source: true, status: true } } },
+        include: {
+          prestudy: { select: { studiedAt: true, source: true, status: true } },
+          progress: {
+            where: { userId: session.uid },
+            select: { percent: true, completed: true },
+          },
+        },
       },
     },
   });
@@ -88,6 +94,8 @@ export default async function BookDetailPage({
           {book.chapters.map((chapter, index) => {
             const studied = Boolean(chapter.prestudy?.studiedAt);
             const hasPrestudy = Boolean(chapter.prestudy);
+            const percent = Math.round(chapter.progress[0]?.percent ?? 0);
+            const finishedChapter = Boolean(chapter.progress[0]?.completed);
             const badge = studied ? (
               <span className="badge ok">已学完</span>
             ) : hasPrestudy ? (
@@ -104,6 +112,8 @@ export default async function BookDetailPage({
                   <div className="chapter-meta">
                     {chapter.wordCount.toLocaleString()} 词 · 第 {chapter.pageStart + 1}–
                     {chapter.pageEnd + 1} 页
+                    {percent > 0 ? ` · 已读 ${percent}%` : ''}
+                    {finishedChapter ? ' · 已读完' : ''}
                   </div>
                 </div>
                 {badge}
@@ -116,7 +126,7 @@ export default async function BookDetailPage({
                   </Link>
                   {studied ? (
                     <Link className="btn sm" href={`/books/${book.id}/read/${chapter.id}`}>
-                      阅读
+                      {percent > 0 && !finishedChapter ? '继续阅读' : '阅读'}
                     </Link>
                   ) : (
                     <span className="btn ghost sm" style={{ opacity: 0.5, cursor: 'not-allowed' }}>

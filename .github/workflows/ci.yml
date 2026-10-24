@@ -73,12 +73,36 @@ jobs:
       - name: Run E2E acceptance test
         run: npm run e2e 2>&1 | tee e2e.log
 
-      - name: Stop server
+      - name: Start server with unreachable LLM
+        run: |
+          LLM_API_KEY=ci-placeholder \
+          LLM_BASE_URL=http://127.0.0.1:9/v1 \
+          LLM_TIMEOUT_MS=2000 \
+          PORT=3001 \
+          nohup npm start > server-llm.log 2>&1 &
+          echo $! > server-llm.pid
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3001/login > /dev/null; then
+              echo "llm server ready after ${i} attempt(s)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "llm server did not become ready in 120s"
+          tail -n 120 server-llm.log
+          exit 1
+
+      - name: Run LLM fallback checks
+        run: BASE_URL=http://127.0.0.1:3001 node scripts/check-llm-fallback.mjs 2>&1 | tee llm-check.log
+
+      - name: Stop servers
         if: always()
         run: |
-          if [ -f server.pid ]; then
-            kill "$(cat server.pid)" 2>/dev/null || true
-          fi
+          for pidfile in server.pid server-llm.pid; do
+            if [ -f "$pidfile" ]; then
+              kill "$(cat "$pidfile")" 2>/dev/null || true
+            fi
+          done
 
       - name: Upload logs
         if: always()
@@ -87,7 +111,9 @@ jobs:
           name: ci-logs
           path: |
             server.log
+            server-llm.log
             e2e.log
+            llm-check.log
           if-no-files-found: ignore
 
       - name: Job summary
@@ -98,4 +124,9 @@ jobs:
             tail -n 25 e2e.log >> "$GITHUB_STEP_SUMMARY"
           else
             echo "e2e.log not found (test step did not run)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### LLM fallback result" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f llm-check.log ]; then
+            tail -n 12 llm-check.log >> "$GITHUB_STEP_SUMMARY"
           fi

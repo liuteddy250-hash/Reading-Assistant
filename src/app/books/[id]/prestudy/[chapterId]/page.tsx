@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { PrestudyRunner } from '@/components/PrestudyRunner';
 import { PrestudyView } from '@/components/PrestudyView';
 import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { llmEnabled } from '@/lib/llm';
 import { ensurePrestudy } from '@/lib/prestudy';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +25,15 @@ export default async function PrestudyPage({
   });
 
   if (!chapter) notFound();
+
+  // With an LLM configured, generating takes tens of seconds: render a loading
+  // shell and generate on the client instead of blocking the server render.
+  const existing = await prisma.prestudy.findUnique({ where: { chapterId: chapter.id } });
+  if (!existing && llmEnabled()) {
+    return (
+      <PrestudyRunner bookId={chapter.book.id} chapterId={chapter.id} title={chapter.title} />
+    );
+  }
 
   let record;
   try {

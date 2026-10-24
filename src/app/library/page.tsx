@@ -18,6 +18,16 @@ export default async function LibraryPage() {
 
   const totalChapters = books.reduce((sum, book) => sum + book._count.chapters, 0);
 
+  const latestProgress = await prisma.readingProgress.findFirst({
+    where: { userId: session.uid },
+    orderBy: { updatedAt: 'desc' },
+    include: {
+      chapter: {
+        select: { id: true, title: true, book: { select: { id: true, title: true } } },
+      },
+    },
+  });
+
   return (
     <div>
       <div className="page-head">
@@ -32,6 +42,36 @@ export default async function LibraryPage() {
       </div>
 
       <UploadPanel />
+
+      {latestProgress ? (
+        <section
+          className="card"
+          style={{
+            padding: '16px 18px',
+            marginBottom: 18,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 14,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <div className="tiny muted">
+              上次读到 · 已读 {Math.round(latestProgress.percent)}%
+            </div>
+            <div style={{ fontWeight: 600, marginTop: 2 }}>
+              {latestProgress.chapter.book.title} · {latestProgress.chapter.title}
+            </div>
+          </div>
+          <Link
+            className="btn"
+            href={`/books/${latestProgress.chapter.book.id}/read/${latestProgress.chapter.id}`}
+          >
+            继续阅读
+          </Link>
+        </section>
+      ) : null}
 
       {books.length === 0 ? (
         <div className="empty">

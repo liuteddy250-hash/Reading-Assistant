@@ -103,6 +103,19 @@ CREATE TABLE IF NOT EXISTS "Word" (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "Word_userId_term_key" ON "Word"("userId", "term");
 CREATE INDEX IF NOT EXISTS "Word_userId_idx" ON "Word"("userId");
+
+CREATE TABLE IF NOT EXISTS "ReadingProgress" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "userId" TEXT NOT NULL,
+  "chapterId" TEXT NOT NULL,
+  "percent" REAL NOT NULL DEFAULT 0,
+  "completed" BOOLEAN NOT NULL DEFAULT false,
+  "updatedAt" DATETIME NOT NULL,
+  CONSTRAINT "ReadingProgress_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "ReadingProgress_chapterId_fkey" FOREIGN KEY ("chapterId") REFERENCES "Chapter"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ReadingProgress_userId_chapterId_key" ON "ReadingProgress"("userId", "chapterId");
+CREATE INDEX IF NOT EXISTS "ReadingProgress_userId_idx" ON "ReadingProgress"("userId");
 `);
 
 const tables = db
