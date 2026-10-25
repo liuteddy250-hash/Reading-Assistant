@@ -2,7 +2,7 @@
 
 上传 PDF 英文书 → 自动切分章节 → **先预习长难句与难词** → 进入带难词高亮、划词翻译、划线笔记和生词本的沉浸阅读。
 
-技术栈：**Next.js 16（App Router）+ TypeScript + Prisma 6 + SQLite + unpdf + ECDICT**，单体应用，一条命令即可跑通；翻译与讲解使用 **OpenAI 兼容大模型接口**，未配置密钥时自动降级为 **ECDICT 离线词典（77 万词条）+ 规则分析**，全流程仍可走通。
+技术栈：**Next.js 16（App Router）+ TypeScript + Prisma 7 + SQLite + unpdf + ECDICT**，单体应用，一条命令即可跑通；翻译与讲解使用 **OpenAI 兼容大模型接口**，未配置密钥时自动降级为 **ECDICT 离线词典（77 万词条）+ 规则分析**，全流程仍可走通。
 
 当前版本 **1.1.0**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -99,7 +99,7 @@ BASE_URL=http://127.0.0.1:3008 npm run e2e
 | 变量 | 是否必填 | 说明 |
 | --- | --- | --- |
 | `AUTH_SECRET` | **必填** | 会话签名密钥，≥ 32 字符随机串；生产环境缺失会直接报错 |
-| `DATABASE_URL` | 默认可用 | 默认 `file:./dev.db`（SQLite，无需装数据库）。换 PostgreSQL 时改这里 + `prisma/schema.prisma` 的 `provider`，并重新 `npm run db:push` |
+| `DATABASE_URL` | 默认可用 | 默认 `file:./prisma/dev.db`（SQLite，无需装数据库；路径相对项目根目录）。换 PostgreSQL 时改这里 + `prisma/schema.prisma` 的 `provider`，并重新 `npm run db:push` |
 | `LLM_API_KEY` | 可选（强烈建议） | OpenAI 兼容接口密钥。留空 → 离线模式：内置词典 + 规则分析，能跑通但无译文和例句 |
 | `LLM_BASE_URL` | 可选 | 默认 `https://api.deepseek.com/v1`；也可填 OpenAI、通义、Moonshot、本地 Ollama 的 `/v1` 地址 |
 | `LLM_MODEL` | 可选 | 默认 `deepseek-chat`，按你的服务商填写 |
@@ -133,6 +133,8 @@ LLM_MODEL="gpt-4o-mini"
 english-reader/
 ├─ prisma/
 │  └─ schema.prisma              # 数据模型（User/Book/Chapter/Prestudy/Annotation/Word）
+├─ prisma.config.ts              # Prisma 7 配置（datasource url、schema 路径）
+├─ src/generated/prisma/         # prisma generate 产物（gitignore，构建时生成）
 ├─ samples/
 │  └─ sample-book.pdf            # 验收用样例 PDF（脚本生成）
 ├─ data/                         # 运行时数据（gitignore）
@@ -141,10 +143,9 @@ english-reader/
 ├─ .github/
 │  └─ workflows/ci.yml           # CI：安装 → 建库 → 构建 → 起服务 → 跑 e2e
 ├─ scripts/
-│  ├─ init-db.mjs                # 无 Prisma 引擎时的建表脚本
+│  ├─ init-db.mjs                # 无 Prisma CLI 时的建表脚本（node:sqlite）
 │  ├─ import-ecdict.mjs          # ECDICT CSV → SQLite（流式解析 + 事务批量写入）
 │  ├─ make-sample-pdf.mjs        # 纯手写 PDF 生成器（无第三方依赖）
-│  ├─ smoke-db.mjs               # Prisma 读写冒烟测试
 │  ├─ check-llm-fallback.mjs     # 大模型不可达时的降级验证
 │  └─ e2e.mjs                    # 端到端验收（25 项断言）
 ├─ playwright.config.ts          # 浏览器测试配置（CI 自起 3100 实例；本地可指向已运行服务）

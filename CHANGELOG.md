@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.3.0
+
+### Changed
+
+- 升级 **Prisma ORM 6.19.3 → 7.10.1**，改用 Rust-free 客户端 + 驱动适配器（`@prisma/adapter-better-sqlite3` + `better-sqlite3`）。
+- 新增 `prisma.config.ts`；`DATABASE_URL` 改为相对项目根目录的 `file:./prisma/dev.db`。
+- 生成器切换为 `prisma-client`，客户端输出到 `src/generated/prisma`（gitignore，安装/构建时生成）。
+- 移除 `scripts/smoke-db.mjs`（旧版直接依赖 `@prisma/client` 单例导入，已由 e2e 覆盖）。
+- `npm audit --omit=dev`：**5 个漏洞 → 0**。
+
+### Verified
+
+- Prisma 7 构建通过；E2E **25/25**；Playwright 浏览器用例 **1/1**。
+- `prisma db push`、`prisma generate` 在 Prisma 7 下正常。
+
 ## 1.2.0
 
 ### Changed

@@ -9,8 +9,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
-const raw = (process.env.DATABASE_URL || 'file:./dev.db').replace(/^file:/, '');
-const dbPath = path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), 'prisma', raw);
+const raw = (process.env.DATABASE_URL || 'file:./prisma/dev.db').replace(/^file:/, '');
+const dbPath = path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
 mkdirSync(path.dirname(dbPath), { recursive: true });
 
 const db = new DatabaseSync(dbPath);
