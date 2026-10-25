@@ -1,0 +1,11 @@
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	# 上传 PDF 时避免超时/截断
+	reverse_proxy app:3000 {
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+}

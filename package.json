@@ -1,6 +1,6 @@
 {
   "name": "english-reader",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "private": true,
   "description": "English reading assistant: upload PDF books, pre-study difficult sentences and words, then read with highlights and look-up.",
   "engines": {

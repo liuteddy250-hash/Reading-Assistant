@@ -568,7 +568,18 @@ git push -u origin main
 
 ---
 
-## 15. License
+## 15. 部署
+
+一键部署到云服务器（Docker + Caddy 自动 HTTPS + 数据卷）：见 **[docs/DEPLOY.md](docs/DEPLOY.md)**。
+
+```bash
+cp .env.production.example .env   # 填 AUTH_SECRET / LLM_API_KEY / SITE_ADDRESS
+docker compose up -d --build
+```
+
+---
+
+## 16. License
 
 本项目代码采用 [MIT License](LICENSE)（© 2026 liuteddy250-hash）。
 

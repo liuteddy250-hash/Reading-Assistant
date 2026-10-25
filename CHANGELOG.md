@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.0
+
+### Added
+
+- **生产部署包**：`Dockerfile`（多阶段 + standalone 产物）、`docker-compose.yml`（app + Caddy 自动 HTTPS）、`Caddyfile`、`docker/entrypoint.sh`（启动时自动建库）、`.env.production.example`、部署文档 `docs/DEPLOY.md`。
+- `next.config.ts` 支持 `NEXT_STANDALONE=1` 时才输出 standalone（仅 Docker 构建使用），避免 Windows 本地构建的符号链接限制。
+
+### Verified
+
+- 以容器等价方式运行 standalone 产物（复制 static/脚本 → init-db → node server.js），E2E **26/26**（含 ECDICT）。
+- 本地单用户构建恢复：E2E **25/25**。
+- 部署体积：运行镜像只带 standalone 产物与 better-sqlite3 原生模块。
+
 ## 1.5.2
 
 ### Changed

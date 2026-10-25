@@ -1,0 +1,42 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # 数据都在 /app/data 卷里：SQLite、PDF、词典
+      DATABASE_URL: file:/app/data/app.db
+      STORAGE_DIR: /app/data/uploads
+      DICT_DB_PATH: /app/data/ecdict.db
+      AUTH_MODE: multi
+    volumes:
+      - app_data:/app/data
+    restart: unless-stopped
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # 指向你的域名；解析到本机后 Caddy 会自动申请 HTTPS 证书
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  app_data:
+  caddy_data:
+  caddy_config:
