@@ -8,3 +8,6 @@ prisma/*.db-journal
 .env.local
 *.log
 tsconfig.tsbuildinfo
+test-results/
+playwright-report/
+blob-report/

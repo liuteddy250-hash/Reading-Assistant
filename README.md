@@ -147,6 +147,9 @@ english-reader/
 │  ├─ smoke-db.mjs               # Prisma 读写冒烟测试
 │  ├─ check-llm-fallback.mjs     # 大模型不可达时的降级验证
 │  └─ e2e.mjs                    # 端到端验收（25 项断言）
+├─ playwright.config.ts          # 浏览器测试配置（CI 自起 3100 实例；本地可指向已运行服务）
+├─ tests/
+│  └─ browser/reading.spec.ts    # 注册 → 上传 → 预习 → 单击查词 → 续读进度
 ├─ src/
 │  ├─ middleware.ts              # 未登录跳转登录页
 │  ├─ app/
@@ -337,6 +340,7 @@ LLM（OpenAI 兼容） → LibreTranslate → ECDICT 离线词典 → 内置小�
 | 造样例书 | `npm run sample:pdf` | PDF 生成脚本异常 |
 | 起服务 | `npm start` + 轮询 `/login`（最多 120s） | 服务启动失败（会打印 `server.log` 尾部） |
 | 验收 | `npm run e2e` | 25 项断言任一失败 |
+| 浏览器用例 | 安装 Chromium 后 `npm run test:browser`（真实点击 / 滚动） | 单击查词、滚动续读等前端行为回归 |
 | 大模型兜底 | 在 3001 端口再起一个指向不可达 LLM 的实例，跑 `check-llm-fallback` | 非阻塞预习或降级逻辑回归 |
 | 收尾 | 停止两个进程、上传 `ci-logs`、写 Job Summary | — |
 
@@ -449,6 +453,17 @@ PASS  PDF 文本提取干净
 ```
 
 > CI 里不下载词典（会跳过「ECDICT 词典命中」「任意词查词音标/标签」两项，其余断言照常），本地导入词典后跑 `npm run e2e` 是 25/25。
+
+浏览器级用例（Playwright，1 条，约 6s）：
+
+```bash
+# 本地：用系统已装的 Edge/Chrome，无需下载浏览器
+$env:PLAYWRIGHT_BASE_URL="http://127.0.0.1:3000"; $env:PLAYWRIGHT_CHANNEL="msedge"; npm run test:browser
+
+# 或下载 Playwright 自带 Chromium 后直接跑（配置会自起 3100 实例）
+npx playwright install chromium
+npm run test:browser
+```
 
 覆盖了验收标准要求的完整链路：**邮箱注册 → 上传 PDF → 选择章节 → 预习长难句与难词 → 进入该章阅读 → 看到难度词汇高亮 → 划词翻译**（外加生词本与未登录跳转）。
 

@@ -73,6 +73,12 @@ jobs:
       - name: Run E2E acceptance test
         run: npm run e2e 2>&1 | tee e2e.log
 
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: npm run test:browser 2>&1 | tee browser.log
+
       - name: Start server with unreachable LLM
         run: |
           LLM_API_KEY=ci-placeholder \
@@ -113,6 +119,7 @@ jobs:
             server.log
             server-llm.log
             e2e.log
+            browser.log
             llm-check.log
           if-no-files-found: ignore
 
