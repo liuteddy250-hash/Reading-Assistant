@@ -5,7 +5,8 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySessionToken(token) : null;
 
-  if (session) return NextResponse.next();
+  const singleUserMode = (process.env.AUTH_MODE ?? '').toLowerCase() === 'single';
+  if (session || singleUserMode) return NextResponse.next();
 
   const loginUrl = request.nextUrl.clone();
   loginUrl.pathname = '/login';

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { AuthForm } from '@/components/AuthForm';
-import { getSession } from '@/lib/auth';
+import { authMode, getSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +9,7 @@ export default async function RegisterPage({
 }: {
   searchParams: Promise<{ next?: string }>;
 }) {
+  if (authMode() === 'single') redirect('/library');
   const session = await getSession();
   if (session) redirect('/library');
 

@@ -34,25 +34,36 @@ function json(response) {
 }
 
 const started = Date.now();
+const mode = (await (await request('/api/auth/mode')).json()).mode;
+console.log(`auth mode: ${mode}`);
 
-// 1) Unauthenticated access is redirected to the login page.
+// 1) Access check: multi-user redirects to login, single-user opens directly.
 {
   const response = await request('/library');
   const location = response.headers.get('location') || '';
-  check('未登录访问 /library 跳转登录', response.status === 307 && location.includes('/login'), `${response.status} ${location}`);
+  if (mode === 'single') {
+    check('单用户模式直接进入书库', response.status === 200, `${response.status}`);
+  } else {
+    check('未登录访问 /library 跳转登录', response.status === 307 && location.includes('/login'), `${response.status} ${location}`);
+  }
 }
 
-// 2) Login page renders.
+// 2) Login page renders (multi) or is closed (single).
 {
   const response = await request('/login');
-  const html = await response.text();
-  check('登录页可访问', response.status === 200 && html.includes('欢迎回来'));
+  if (mode === 'single') {
+    const location = response.headers.get('location') || '';
+    check('单用户模式登录页已关闭', response.status === 307 && location.includes('/library'), `${response.status} ${location}`);
+  } else {
+    const html = await response.text();
+    check('登录页可访问', response.status === 200 && html.includes('欢迎回来'));
+  }
 }
 
 // 3) Register a fresh account.
 const email = `e2e-${Date.now()}@example.com`;
 const password = 'Passw0rd!2024';
-{
+if (mode === 'multi') {
   const response = await request('/api/auth/register', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -60,6 +71,8 @@ const password = 'Passw0rd!2024';
   });
   const data = await json(response);
   check('邮箱注册成功', response.status === 201, data?.user?.email ?? JSON.stringify(data));
+} else {
+  check('单用户模式跳过注册', true);
 }
 
 // 4) Library page works with the session cookie.
@@ -302,20 +315,25 @@ const second = chapters[1] ?? chapters[0];
   check('生词本页面显示单词', response.status === 200 && html.includes('ubiquitous'));
 }
 
-// 18) API rejects unauthenticated calls.
+// 18) API auth behaviour depends on the mode.
 {
-  const saved = cookie;
-  cookie = '';
-  const response = await request('/api/books');
-  check('未登录调用 API 返回 401', response.status === 401);
+  if (mode === 'single') {
+    const response = await request('/api/books');
+    check('单用户模式 API 无需登录', response.status === 200, `${response.status}`);
+  } else {
+    const saved = cookie;
+    cookie = '';
+    const response = await request('/api/books');
+    check('未登录调用 API 返回 401', response.status === 401);
 
-  const progressResponse = await request('/api/progress', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ chapterId: first.id, percent: 10 }),
-  });
-  check('未登录保存进度返回 401', progressResponse.status === 401);
-  cookie = saved;
+    const progressResponse = await request('/api/progress', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chapterId: first.id, percent: 10 }),
+    });
+    check('未登录保存进度返回 401', progressResponse.status === 401);
+    cookie = saved;
+  }
 }
 
 // 19) PDF text extraction sanity: chapter text is clean English, no PDF syntax.

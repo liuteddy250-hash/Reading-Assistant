@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.5.0
+
+### Added
+
+- **单用户模式**：`AUTH_MODE=single` 关闭登录/注册，打开即用；数据归属同一本地账号（默认取"书最多"的账号，可用 `LOCAL_USER_EMAIL` 指定）。
+- `GET /api/auth/mode`：前端与测试可判断当前是 single 还是 multi。
+
+### Changed
+
+- 单用户模式下 `/login`、`/register` 自动跳回书库，导航显示「本地模式」；`start.cmd` 绑定 `127.0.0.1`。
+- E2E 与 Playwright 兼容两种模式（多用户流程保持原样）。
+
+### Verified
+
+- 本地单用户：E2E **25/25**（86.6s）、Playwright **1/1**（2.3 min）。
+- CI 仍以多用户模式运行，行为不变。
+
 ## 1.4.0
 
 ### Added

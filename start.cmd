@@ -34,11 +34,11 @@ if not exist "prisma\dev.db" (
   echo [2/3] 数据库已存在，跳过。
 )
 
-echo [3/3] 启动服务：http://127.0.0.1:3000
+echo [3/3] 启动服务：http://127.0.0.1:3000（仅本机访问）
 echo       关闭本窗口即停止服务。
 echo.
 start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 4; Start-Process 'http://127.0.0.1:3000'"
-call npm start
+call npm start -- -H 127.0.0.1
 goto :eof
 
 :failed

@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import { getSession } from '@/lib/auth';
+import { authMode, getSession } from '@/lib/auth';
 import { LogoutButton } from './LogoutButton';
 
 export async function Nav() {
   const session = await getSession();
+  const singleUserMode = authMode() === 'single';
 
   return (
     <header className="nav">
@@ -31,7 +32,7 @@ export async function Nav() {
             <span className="nav-user" title={session.email}>
               {session.email}
             </span>
-            <LogoutButton />
+            {singleUserMode ? <span className="badge ok">本地模式</span> : <LogoutButton />}
           </div>
         ) : (
           <div className="row" style={{ gap: 8 }}>

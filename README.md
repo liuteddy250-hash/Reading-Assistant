@@ -20,7 +20,7 @@
 | 阅读进度 | 滚动位置自动保存（节流 + 离开页面兜底），章节列表显示已读百分比，书库顶部「继续阅读」直达上次位置 |
 | 划线 + 翻译 | 选中任意片段弹出工具条：翻译（结果自动保存为划线 + 译文）、仅下划线、加入生词本；已划线文本点击可回看译文、删除 |
 | 生词本 | 双击单词直接收藏，或选中片段收藏；独立页面支持搜索、删除、导出 CSV，并记录来源书籍/章节与上下文 |
-| 登录保护 | `middleware.ts` 校验 JWT，未登录访问 `/library`、`/books/*`、`/vocabulary` 会 307 跳转 `/login?next=...`，登录后回到原页面 |
+| 登录保护 | `middleware.ts` 校验 JWT，未登录访问 `/library`、`/books/*`、`/vocabulary` 会 307 跳转 `/login?next=...`；也支持 `AUTH_MODE=single` **关闭登录**（见下文） |
 | 扫描件 / 解析失败 | 扫描件（无文字层）不静默失败：记录书籍并给出 OCR 指引；文件损坏 / 非 PDF 返回明确错误；解析异常单独标记状态 |
 
 ---
@@ -91,6 +91,27 @@ BASE_URL=http://127.0.0.1:3008 npm run e2e
 ```
 
 > Windows PowerShell：`$env:BASE_URL="http://127.0.0.1:3000"; npm run e2e`
+
+---
+
+### 关闭登录（单用户模式）
+
+只想自己用、不想每次登录时，把 `.env` 改成：
+
+```env
+AUTH_MODE="single"
+# 可选：指定使用哪个已有账号的数据（默认选"书最多"的账号）
+# LOCAL_USER_EMAIL="you@example.com"
+```
+
+然后 `npm run build && npm start`（或直接跑 `start.cmd`）：
+
+- 打开 `/library` 直接进入；`/login`、`/register` 自动跳回书库；导航显示「本地模式」；
+- 所有数据仍按一个 `userId` 存储，未来恢复登录后数据还在；
+- `start.cmd` 以 `-H 127.0.0.1` 启动，**只允许本机访问**。若要在局域网用，去掉该参数并自行承担无鉴权风险；
+- 恢复多用户：改回 `AUTH_MODE="multi"` 重新构建即可。
+
+> 注意：`AUTH_MODE` 会被构建期内联进 middleware，修改后需要重新 `npm run build`。
 
 ---
 

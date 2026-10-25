@@ -6,13 +6,16 @@ import path from 'node:path';
  * real clicks, scroll-driven progress and the dictionary popup.
  */
 test('注册 → 上传 → 预习 → 单击查词 → 续读进度', async ({ page }) => {
-  const email = `pw-${Date.now()}@example.com`;
-
-  await page.goto('/register');
-  await page.fill('#email', email);
-  await page.fill('#password', 'Passw0rd!2024');
-  await page.getByRole('button', { name: /注册并进入书库/ }).click();
-  await expect(page).toHaveURL(/\/library$/, { timeout: 30_000 });
+  // Single-user mode opens /library directly; multi-user mode needs a fresh account.
+  await page.goto('/library');
+  if (new URL(page.url()).pathname === '/login') {
+    const email = `pw-${Date.now()}@example.com`;
+    await page.goto('/register');
+    await page.fill('#email', email);
+    await page.fill('#password', 'Passw0rd!2024');
+    await page.getByRole('button', { name: /注册并进入书库/ }).click();
+    await expect(page).toHaveURL(/\/library$/, { timeout: 30_000 });
+  }
   await expect(page.getByRole('heading', { name: '我的书库' })).toBeVisible();
 
   // Upload the bundled sample PDF through the real file input.
