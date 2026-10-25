@@ -27,9 +27,14 @@ function extractJson(raw: string): string {
   return withoutFence.slice(start, end + 1);
 }
 
-async function request(messages: Message[], json: boolean, temperature: number): Promise<string> {
+async function request(
+  messages: Message[],
+  json: boolean,
+  temperature: number,
+  maxTokens: number,
+): Promise<string> {
   const timeoutMs = Number(process.env.LLM_TIMEOUT_MS || 45000);
-  const payload: Record<string, unknown> = { model: MODEL, messages, temperature };
+  const payload: Record<string, unknown> = { model: MODEL, messages, temperature, max_tokens: maxTokens };
   if (json) payload.response_format = { type: 'json_object' };
 
   const send = async (body: Record<string, unknown>) => {
@@ -57,7 +62,7 @@ async function request(messages: Message[], json: boolean, temperature: number):
   } catch (error) {
     // Some OpenAI-compatible providers reject `response_format`; retry without it.
     if (json && error instanceof LLMError && error.message.includes('400')) {
-      data = await send({ model: MODEL, messages, temperature });
+      data = await send({ model: MODEL, messages, temperature, max_tokens: maxTokens });
     } else {
       throw error;
     }
@@ -76,6 +81,7 @@ export async function chatText(system: string, user: string): Promise<string> {
     ],
     false,
     0.2,
+    600,
   );
   return content.trim();
 }
@@ -88,6 +94,7 @@ export async function chatJSON<T>(system: string, user: string): Promise<T> {
     ],
     true,
     0.2,
+    1600,
   );
   return JSON.parse(extractJson(content)) as T;
 }

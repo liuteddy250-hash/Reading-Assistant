@@ -85,9 +85,9 @@ export function PrestudyView({ bookId, chapter, payload, studied, source }: Prop
 
       {source !== 'llm' ? (
         <div className="alert info">
-          当前是<strong>离线分析模式</strong>（未配置或调用失败 <code>LLM_API_KEY</code>）。
-          难词释义来自内置词库，长难句给出结构与意群拆解，但不含参考译文；
-          配置大模型后可一键重新生成完整讲解。
+          当前是<strong>离线分析模式</strong>（未配置大模型，或调用失败）。
+          难词释义与音标来自 <strong>ECDICT 离线词典</strong>；长难句给出结构拆解与意群切分，
+          暂不生成参考译文。配置大模型后可一键重新生成完整讲解。
         </div>
       ) : null}
 

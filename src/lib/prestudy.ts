@@ -6,7 +6,7 @@ import { chatJSON, llmEnabled, llmModel } from './llm';
 import { truncate } from './text';
 import type { PrestudyPayload, PrestudySentence, PrestudyWord } from './types';
 
-const MAX_CONTENT_CHARS = 9000;
+const MAX_CONTENT_CHARS = 6000;
 
 const CLAUSE_MARKER =
   /\b(which|that|who|whom|whose|where|when|while|whereas|although|though|because|since|unless|until|whether|if|so that|even though|in spite of|despite|rather than|not only|as if|as though)\b/gi;
@@ -48,7 +48,7 @@ function offlinePrestudy(chapter: { title: string; content: string }): PrestudyP
   const sentences: PrestudySentence[] = analysis.longSentences.map((item) => ({
     text: item.text,
     structure: describeStructure(item),
-    translation: '（离线模式未生成参考译文：配置 LLM_API_KEY 后会自动补充）',
+    translation: '（离线模式未生成参考译文；配置大模型后重新生成即可补充）',
     chunks: chunkSentence(item.text),
   }));
 

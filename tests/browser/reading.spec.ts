@@ -26,7 +26,7 @@ test('注册 → 上传 → 预习 → 单击查词 → 续读进度', async ({ 
   await expect(page.getByText('Chapter One').first()).toBeVisible();
   await page.getByRole('link', { name: '开始预习' }).first().click();
 
-  await expect(page.getByRole('heading', { name: /长难句精讲/ })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('heading', { name: /长难句精讲/ })).toBeVisible({ timeout: 240_000 });
   await page.getByRole('button', { name: /完成预习，开始阅读/ }).click();
 
   await expect(page.locator('article.reader-article')).toBeVisible({ timeout: 60_000 });

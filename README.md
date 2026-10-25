@@ -125,6 +125,23 @@ LLM_API_KEY="sk-xxxxxxxx"
 LLM_MODEL="gpt-4o-mini"
 ```
 
+### 本地大模型（Ollama，零费用离线译文）
+
+不想用云端 API 时，可以在本机跑一个小模型，**参考译文与长难句讲解都不出网**：
+
+1. 下载便携版 Ollama，解压到工作区的 `.ollama-portable/`（含 `app/` 与 `models/`）；
+2. 运行 `start-ollama.cmd` 启动服务（`start.cmd` 检测到它会自动拉起）；
+3. `.env` 改为：
+
+```env
+LLM_BASE_URL="http://127.0.0.1:11434/v1"
+LLM_API_KEY="ollama"
+LLM_MODEL="qwen2.5:3b"
+LLM_TIMEOUT_MS="300000"
+```
+
+3B 模型在纯 CPU 上约 **2–3 分钟/章**（一次性生成、按章缓存）；关闭 Ollama 后应用会自动回退离线分析模式。
+
 ---
 
 ## 5. 目录结构
@@ -134,6 +151,7 @@ english-reader/
 ├─ prisma/
 │  └─ schema.prisma              # 数据模型（User/Book/Chapter/Prestudy/Annotation/Word）
 ├─ prisma.config.ts              # Prisma 7 配置（datasource url、schema 路径）
+├─ start.cmd / start-ollama.cmd  # 一键启动（站点 / 本地模型）
 ├─ src/generated/prisma/         # prisma generate 产物（gitignore，构建时生成）
 ├─ samples/
 │  └─ sample-book.pdf            # 验收用样例 PDF（脚本生成）
@@ -147,7 +165,7 @@ english-reader/
 │  ├─ import-ecdict.mjs          # ECDICT CSV → SQLite（流式解析 + 事务批量写入）
 │  ├─ make-sample-pdf.mjs        # 纯手写 PDF 生成器（无第三方依赖）
 │  ├─ check-llm-fallback.mjs     # 大模型不可达时的降级验证
-│  └─ e2e.mjs                    # 端到端验收（25 项断言）
+│  └─ e2e.mjs                    # 端到端验收（26 项断言）
 ├─ playwright.config.ts          # 浏览器测试配置（CI 自起 3100 实例；本地可指向已运行服务）
 ├─ tests/
 │  └─ browser/reading.spec.ts    # 注册 → 上传 → 预习 → 单击查词 → 续读进度
@@ -234,7 +252,7 @@ english-reader/
 ### 6.3 预习材料（`src/lib/prestudy.ts`）
 
 - 配置了 `LLM_API_KEY`：一次 JSON 调用同时产出导读、长难句（结构 + 译文）和难词（音标 / 词性 / 释义 / 例句），结果缓存在 `Prestudy.payload`；
-- 未配置或调用失败：回退离线分析（意群切分 + 结构提示 + 内置词典释义），页面明确标注「离线分析模式」；
+- 未配置或调用失败：回退离线分析（意群切分 + 结构提示 + ECDICT 离线词典释义），页面明确标注「离线分析模式」；
 - 生成结果按章缓存，重复访问不重复计费；「重新生成」才会覆盖。
 
 ### 6.4 划线与译文定位（`src/components/Reader.tsx`）
@@ -432,6 +450,7 @@ PASS  上传 PDF 并自动划分章节 — status=201 chapters=3
 PASS  书籍详情页显示章节
 PASS  章节接口返回正文
 PASS  未预习直接阅读被拦截 — 307 /books/.../prestudy/...
+PASS  预习材料生成接口可用
 PASS  预习页生成长难句与难词 — status=200 length=25520
 PASS  预习数据包含 sentences/words/summary — sentences=6 words=18
 PASS  标记预习完成
@@ -450,12 +469,12 @@ PASS  未登录调用 API 返回 401
 PASS  未登录保存进度返回 401
 PASS  PDF 文本提取干净
 
-25/25 checks passed
+26/26 checks passed
 ```
 
-> CI 里不下载词典（会跳过「ECDICT 词典命中」「任意词查词音标/标签」两项，其余断言照常），本地导入词典后跑 `npm run e2e` 是 25/25。
+> CI 里不下载词典（会跳过「ECDICT 词典命中」「任意词查词音标/标签」两项，其余断言照常），本地导入词典后跑 `npm run e2e` 是 26/26。
 
-浏览器级用例（Playwright，1 条，约 6s）：
+浏览器级用例（Playwright，1 条）：离线模式约 6s；本地 3B 模型生成预习时约 3 分钟。
 
 ```bash
 # 本地：用系统已装的 Edge/Chrome，无需下载浏览器

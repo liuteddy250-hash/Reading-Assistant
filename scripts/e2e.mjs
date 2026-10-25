@@ -127,15 +127,14 @@ const second = chapters[1] ?? chapters[0];
   check('未预习直接阅读被拦截', response.status === 307 && location.includes('/prestudy/'), `${response.status} ${location}`);
 }
 
-// 9) Pre-study page generates long sentences + hard words (offline fallback).
+// 9) Generate pre-study (offline rules or a configured LLM), then verify the page.
 {
+  const generate = await request(`/api/chapters/${first.id}/prestudy`, { method: 'POST' });
+  check('预习材料生成接口可用', generate.status === 200, `status=${generate.status}`);
+
   const response = await request(`/books/${bookId}/prestudy/${first.id}`);
   const html = await response.text();
-  const ok =
-    response.status === 200 &&
-    html.includes('长难句精讲') &&
-    html.includes('重点难词') &&
-    html.includes('离线');
+  const ok = response.status === 200 && html.includes('长难句精讲') && html.includes('重点难词');
   check('预习页生成长难句与难词', ok, `status=${response.status} length=${html.length}`);
 }
 

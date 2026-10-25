@@ -7,6 +7,13 @@ echo   ReadEasy - 英语阅读辅助
 echo ==========================================
 echo.
 
+if exist "%~dp0..\.ollama-portable\app\ollama.exe" (
+  echo [0/3] 启动本地大模型（Ollama）...
+  start "Ollama" "%~dp0start-ollama.cmd"
+) else (
+  echo [0/3] 未发现本地大模型，使用离线分析模式。
+)
+
 if not exist "node_modules\next\package.json" (
   echo [1/3] 首次运行，正在安装依赖（可能需要几分钟）...
   call npm install

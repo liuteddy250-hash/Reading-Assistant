@@ -5,7 +5,7 @@ const channel = process.env.PLAYWRIGHT_CHANNEL as 'chrome' | 'msedge' | 'chromiu
 
 export default defineConfig({
   testDir: './tests/browser',
-  timeout: 90_000,
+  timeout: 300_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
   workers: 1,
