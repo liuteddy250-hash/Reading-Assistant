@@ -527,3 +527,9 @@ git push -u origin main
 本项目代码采用 [MIT License](LICENSE)（© 2026 liuteddy250-hash）。
 
 第三方数据：离线词典来自 [ECDICT](https://github.com/skywind3000/ECDICT)（MIT），**不随仓库分发**，需按第 6.7 节自行下载导入。
+
+**`npm install` 卡在 better-sqlite3 / 报 `gyp ERR!`？**
+Prisma 7 的 SQLite 适配器依赖 `better-sqlite3`，安装时会优先下载预编译包；若下载被网络拦截，会回退到源码编译，Windows 缺少 MSVC 就会失败。处理方式：开启代理后重新 `npm install`（推荐）；或安装 Visual Studio Build Tools（C++ 工作负载）。CI（ubuntu）自带编译链，不受影响。
+
+**`src/generated/prisma` 目录不存在？**
+它由 `prisma generate` 生成（`npm install` 的 postinstall 与 `npm run build` 都会自动执行），已加入 `.gitignore`，不要手动提交。
