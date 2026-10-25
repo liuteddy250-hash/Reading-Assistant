@@ -37,6 +37,13 @@ const chapters = [
   },
 ];
 
+const FRONT_MATTER = [
+  ['A SAMPLE BOOK', '', 'by Test Author', ''],
+  ['Publisher Notes', '', 'This test edition exists only for the end-to-end suite.', 'It must never be treated as book content.', ''],
+  ['Table of Contents', '', 'Chapter One', 'Chapter Two', 'Chapter Three', ''],
+  ['Preface', '', 'This preface verifies that front matter is skipped.', 'The real body starts on the next page.', ''],
+];
+
 function wrap(text, maxChars) {
   const words = text.split(/\s+/);
   const lines = [];
@@ -54,30 +61,34 @@ function wrap(text, maxChars) {
 }
 
 const PAGE_LINES = 40;
-const pages = [];
-let current = [];
 
-function flushPage() {
-  if (current.length > 0) pages.push(current);
-  current = [];
-}
+function buildPages(prefix = []) {
+  const pages = prefix.map((block) => block.slice());
+  let current = [];
 
-for (const chapter of chapters) {
-  flushPage();
-  current.push(chapter.heading);
-  current.push('');
-  current.push(chapter.title);
-  current.push('');
-
-  for (const paragraph of chapter.paragraphs) {
-    for (const line of wrap(paragraph, 82)) {
-      if (current.length >= PAGE_LINES) flushPage();
-      current.push(line);
-    }
-    current.push('');
+  function flushPage() {
+    if (current.length > 0) pages.push(current);
+    current = [];
   }
+
+  for (const chapter of chapters) {
+    flushPage();
+    current.push(chapter.heading);
+    current.push('');
+    current.push(chapter.title);
+    current.push('');
+
+    for (const paragraph of chapter.paragraphs) {
+      for (const line of wrap(paragraph, 82)) {
+        if (current.length >= PAGE_LINES) flushPage();
+        current.push(line);
+      }
+      current.push('');
+    }
+  }
+  flushPage();
+  return pages;
 }
-flushPage();
 
 const escapePdf = (value) => value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 
@@ -86,39 +97,50 @@ function contentStream(lines) {
   return `BT\n/F1 11 Tf\n16 TL\n60 760 Td\n${body}\nET`;
 }
 
-const fontId = 3 + pages.length * 2;
-const objects = [];
-objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
-objects[2] = `<< /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(' ')}] /Count ${pages.length} >>`;
+function renderPdf(pages) {
+  const fontId = 3 + pages.length * 2;
+  const objects = [];
+  objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objects[2] = `<< /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(' ')}] /Count ${pages.length} >>`;
 
-pages.forEach((lines, index) => {
-  const pageId = 3 + index * 2;
-  const contentId = 4 + index * 2;
-  objects[pageId] =
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ` +
-    `/Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`;
-  const stream = contentStream(lines);
-  objects[contentId] = `<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream`;
-});
+  pages.forEach((lines, index) => {
+    const pageId = 3 + index * 2;
+    const contentId = 4 + index * 2;
+    objects[pageId] =
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ` +
+      `/Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`;
+    const stream = contentStream(lines);
+    objects[contentId] = `<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream`;
+  });
 
-objects[fontId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+  objects[fontId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
 
-let pdf = '%PDF-1.4\n';
-const offsets = [];
-for (let id = 1; id < objects.length; id += 1) {
-  offsets[id] = Buffer.byteLength(pdf, 'latin1');
-  pdf += `${id} 0 obj\n${objects[id]}\nendobj\n`;
+  let pdf = '%PDF-1.4\n';
+  const offsets = [];
+  for (let id = 1; id < objects.length; id += 1) {
+    offsets[id] = Buffer.byteLength(pdf, 'latin1');
+    pdf += `${id} 0 obj\n${objects[id]}\nendobj\n`;
+  }
+
+  const xrefOffset = Buffer.byteLength(pdf, 'latin1');
+  pdf += `xref\n0 ${objects.length}\n`;
+  pdf += '0000000000 65535 f \n';
+  for (let id = 1; id < objects.length; id += 1) {
+    pdf += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(pdf, 'latin1');
 }
 
-const xrefOffset = Buffer.byteLength(pdf, 'latin1');
-pdf += `xref\n0 ${objects.length}\n`;
-pdf += '0000000000 65535 f \n';
-for (let id = 1; id < objects.length; id += 1) {
-  pdf += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
-}
-pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+const samplesDir = path.join(process.cwd(), 'samples');
+const fixtures = [
+  { file: 'sample-book.pdf', pages: buildPages() },
+  { file: 'sample-frontmatter.pdf', pages: buildPages(FRONT_MATTER) },
+];
 
-const output = process.argv[2] || path.join(process.cwd(), 'samples', 'sample-book.pdf');
-mkdirSync(path.dirname(output), { recursive: true });
-writeFileSync(output, Buffer.from(pdf, 'latin1'));
-console.log(`[sample] wrote ${output} (${pages.length} pages)`);
+for (const { file, pages } of fixtures) {
+  const output = path.join(samplesDir, file);
+  mkdirSync(path.dirname(output), { recursive: true });
+  writeFileSync(output, renderPdf(pages));
+  console.log(`[sample] wrote ${output} (${pages.length} pages)`);
+}

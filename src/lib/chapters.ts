@@ -1,4 +1,5 @@
 import { countWords, reflowText } from './text';
+import { detectBodyStart, trimToBody } from './frontmatter';
 
 export type ChapterDraft = {
   title: string;
@@ -19,7 +20,9 @@ type Line = {
 const PATTERNS: RegExp[] = [
   /^(chapter|part|section|book)\s+(\d{1,3}|[ivxlcdm]{1,7}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b[\s.:\-—]*(.*)$/i,
   /^第\s*[一二三四五六七八九十百零〇\d]{1,5}\s*[章节回卷部篇][\s.:：\-—]*(.*)$/,
-  /^(prologue|epilogue|preface|foreword|introduction|conclusion|afterword|appendix|acknowledg(e)?ments|contents|index)\b[\s.:\-—]*(.*)$/i,
+  // Plays: ACT is a chapter-level boundary (scenes stay inside the act).
+  /^act\s+(\d{1,3}|[ivxlcdm]{1,7})\b[\s.:\-—]*(.*)$/i,
+  /^(the\s+)?(prologue|epilogue|preface|foreword|introduction|conclusion|afterword|appendix|acknowledg(e)?ments|contents|index)\b[\s.:\-—]*(.*)$/i,
 ];
 
 const PAGE_NUMBER_RE = /^(?:[-–—]\s*)?(?:\d{1,4}|[ivxlcdm]{1,7})(?:\s*[-–—])?$/i;
@@ -219,10 +222,17 @@ function chunkByPages(pages: string[], targetWords = 3200): ChapterDraft[] {
 }
 
 export function splitIntoChapters(pages: string[]): ChapterDraft[] {
-  const { full, pageStarts, pageNumbers } = buildFullText(pages);
+  // Skip front matter (title page, TOC, cast list, preface...) before splitting.
+  const bodyStart = detectBodyStart(pages);
+  const workingPages = bodyStart ? trimToBody(pages, bodyStart) : pages;
+  if (bodyStart) {
+    console.info(`[chapters] body starts at page ${bodyStart.page + 1}: ${bodyStart.reason}`);
+  }
+
+  const { full, pageStarts, pageNumbers } = buildFullText(workingPages);
   if (!full.trim()) return [];
 
-  const lines = collectLines(full, pageStarts, pageNumbers, pages);
+  const lines = collectLines(full, pageStarts, pageNumbers, workingPages);
 
   const patternHeadings = lines.filter((line) => isPatternHeading(line.text)).slice(0, 200);
   if (patternHeadings.length >= 2) {
@@ -237,7 +247,7 @@ export function splitIntoChapters(pages: string[]): ChapterDraft[] {
   }
 
   // Fallback: chunk by page count so users always get something readable.
-  return finalize(chunkByPages(pages));
+  return finalize(chunkByPages(workingPages));
 }
 
 export function splitByRanges(

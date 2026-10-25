@@ -4,7 +4,7 @@
 
 技术栈：**Next.js 16（App Router）+ TypeScript + Prisma 7 + SQLite + unpdf + ECDICT**，单体应用，一条命令即可跑通；翻译与讲解使用 **OpenAI 兼容大模型接口**，未配置密钥时自动降级为 **ECDICT 离线词典（77 万词条）+ 规则分析**，全流程仍可走通。
 
-当前版本 **1.1.0**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **1.6.1**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -14,7 +14,7 @@
 | --- | --- |
 | 邮箱注册 / 登录 / 独立数据 | 邮箱 + 密码（bcrypt 10 轮），JWT（jose HS256）写入 httpOnly Cookie，7 天有效；所有书籍、章节、划线、生词都按 `userId` 隔离 |
 | 上传 PDF 入个人书库 | `multipart/form-data` 上传，校验扩展名 / 大小 / `%PDF-` 魔数；文件落盘到 `STORAGE_DIR`，文本与章节入库 |
-| 章节划分 | 优先识别 `Chapter N` / `Part N` / `第 N 章` / `Prologue` 等标题，其次识别「短标题行 + 上下空行」，最后按页数分块；支持**手动按页码范围**重划 |
+| 章节划分 | 先**跳过文前内容**（标题页 / 出版说明 / 目录 / 人物表 / 前言），再从正文标题开始识别 `Chapter N` / `ACT N` / `Part N` / `第 N 章` / `PROLOGUE`；其次识别「短标题行 + 上下空行」，最后按页数分块；支持**手动按页码范围**重划 |
 | 课前预习 | 每章进入前自动生成：中文导读、4–6 个长难句（原文 / 意群切分 / 结构拆解 / 参考译文）、10–18 个难词（音标 / 词性 / 释义 / 例句）；预习未完成时阅读页会被拦截。配置大模型时改为**客户端生成**（页面秒开、显示等待秒数与重试），离线模式仍内联生成 |
 | 阅读模式 | 难度词自动高亮（两级颜色）、可开关高亮、字号调节、上一章 / 下一章；**单击任意单词**弹出词典卡（音标 / 词性 / 考试标签 / 词频 / 柯林斯星级 / 英文释义） |
 | 阅读进度 | 滚动位置自动保存（节流 + 离开页面兜底），章节列表显示已读百分比，书库顶部「继续阅读」直达上次位置 |
@@ -520,6 +520,9 @@ npm run test:browser
 
 **`prisma db push` 报 `Schema engine exited ... spawn EPERM`？**
 同上，改用 `npm run db:init`（等价建表脚本，DDL 与 `schema.prisma` 对齐）。
+
+**识别结果里出现作品介绍 / 目录 / 人物表？**
+新版会自动跳过文前内容：先用「Table of Contents / Publisher Notes / Dramatis Personae / Preface」等标记和稀疏页判断文前范围，再找第一个"后续有正文体量"的结构标题（Chapter / ACT / 第 N 章 / PROLOGUE）作为正文起点。若两者都不可靠，会**保留原文**而不是截断（宁可多识别，不丢正文）。可用 `npm run sample:pdf` 生成带文前的测试 PDF（`samples/sample-frontmatter.pdf`）复现。
 
 **上传后只分出 1 章？**
 标题格式不常见。在书籍详情页用「手动按页划分」，或调整 `src/lib/chapters.ts` 的标题正则。

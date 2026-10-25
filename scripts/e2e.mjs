@@ -342,6 +342,35 @@ const second = chapters[1] ?? chapters[0];
   check('PDF 文本提取干净', ok);
 }
 
+// 20) Front matter (title page, publisher notes, TOC, preface) is skipped.
+{
+  const frontBytes = readFileSync(path.join(process.cwd(), 'samples', 'sample-frontmatter.pdf'));
+  const form = new FormData();
+  form.append('file', new Blob([frontBytes], { type: 'application/pdf' }), 'sample-frontmatter.pdf');
+  form.append('title', 'Front Matter Sample');
+
+  const upload = await request('/api/books', { method: 'POST', body: form });
+  const created = await upload.json();
+  const frontBookId = created?.book?.id ?? '';
+
+  const detail = await request(`/api/books/${frontBookId}`);
+  const detailJson = await detail.json();
+  const frontChapters = detailJson?.book?.chapters ?? [];
+  const firstChapter = frontChapters[0] ?? { title: '', content: '' };
+
+  check(
+    '自动跳过文前内容（标题页/目录/前言）',
+    upload.status === 201 &&
+      frontChapters.length >= 2 &&
+      String(firstChapter.title).includes('Chapter One') &&
+      !String(firstChapter.content).includes('Table of Contents') &&
+      !String(firstChapter.content).includes('Publisher Notes') &&
+      !String(firstChapter.content).includes('This preface') &&
+      String(firstChapter.content).includes('Reading in a second language'),
+    `chapters=${frontChapters.length} first=${firstChapter.title} status=${upload.status}`,
+  );
+}
+
 const passed = results.filter((item) => item.ok).length;
 console.log(`\n${passed}/${results.length} checks passed in ${((Date.now() - started) / 1000).toFixed(1)}s`);
 if (passed !== results.length) {
