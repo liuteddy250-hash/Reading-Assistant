@@ -503,3 +503,11 @@ git push -u origin main
 - 仓库是 Public 时注意：`samples/sample-book.pdf` 等内容也会公开，确认无敏感信息。
 
 > 想改首次提交的署名：`git commit --amend --reset-author --no-edit`（先配置好 name/email）。
+
+---
+
+## 15. License
+
+本项目代码采用 [MIT License](LICENSE)（© 2026 liuteddy250-hash）。
+
+第三方数据：离线词典来自 [ECDICT](https://github.com/skywind3000/ECDICT)（MIT），**不随仓库分发**，需按第 6.7 节自行下载导入。
