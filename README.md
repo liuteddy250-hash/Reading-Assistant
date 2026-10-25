@@ -2,7 +2,7 @@
 
 上传 PDF 英文书 → 自动切分章节 → **先预习长难句与难词** → 进入带难词高亮、划词翻译、划线笔记和生词本的沉浸阅读。
 
-技术栈：**Next.js 15（App Router）+ TypeScript + Prisma 6 + SQLite + unpdf + ECDICT**，单体应用，一条命令即可跑通；翻译与讲解使用 **OpenAI 兼容大模型接口**，未配置密钥时自动降级为 **ECDICT 离线词典（77 万词条）+ 规则分析**，全流程仍可走通。
+技术栈：**Next.js 16（App Router）+ TypeScript + Prisma 6 + SQLite + unpdf + ECDICT**，单体应用，一条命令即可跑通；翻译与讲解使用 **OpenAI 兼容大模型接口**，未配置密钥时自动降级为 **ECDICT 离线词典（77 万词条）+ 规则分析**，全流程仍可走通。
 
 当前版本 **1.1.0**，变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 

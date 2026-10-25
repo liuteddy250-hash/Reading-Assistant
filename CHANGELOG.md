@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0
+
+### Changed
+
+- 升级 **Next.js 15.5.28 → 16.4.3**（关闭产线安全审计中 next/postcss 的告警项）。
+- 移除 Next 16 已废弃的 `next.config.ts` → `eslint` 配置项。
+- `tsconfig.json` 与 `next-env.d.ts` 按 Next 16 自动迁移（`jsx: react-jsx`、新增 dev 类型目录）。
+- 现有 `src/middleware.ts` 在 Next 16 下由 Proxy 承载，行为不变（构建产物显示 `Proxy (Middleware)`）。
+
+### Verified
+
+- 生产构建通过；E2E **25/25**（含 ECDICT）。
+- 大模型不可达降级检查 **7/7**（预习页非阻塞、0s 回退离线、查词 7ms 走词典）。
+- 无词典场景 23/23 + 2 SKIP（CI 状态）。
+
 ## 1.1.0
 
 ### Added
