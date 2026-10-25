@@ -86,6 +86,17 @@ export async function chatText(system: string, user: string): Promise<string> {
   return content.trim();
 }
 
+function looseParse(raw: string): unknown | null {
+  const cleaned = extractJson(raw)
+    .replace(/,\s*([}\]])/g, '$1')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ');
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    return null;
+  }
+}
+
 export async function chatJSON<T>(system: string, user: string): Promise<T> {
   const content = await request(
     [
@@ -94,7 +105,30 @@ export async function chatJSON<T>(system: string, user: string): Promise<T> {
     ],
     true,
     0.2,
-    1600,
+    2400,
   );
-  return JSON.parse(extractJson(content)) as T;
+
+  const parsed = looseParse(content);
+  if (parsed) return parsed as T;
+
+  // Small local models sometimes truncate or loop; ask for a shorter valid payload.
+  const retry = await request(
+    [
+      {
+        role: 'system',
+        content: `${system}\n严格只输出一个合法 JSON 对象：不要解释、不要省略引号或括号、数组里不要多余逗号。`,
+      },
+      {
+        role: 'user',
+        content: `${user}\n\n上一次输出不合法或过长。请输出更短的一版：最多 4 个句子、10 个单词。`,
+      },
+    ],
+    true,
+    0.3,
+    2400,
+  );
+
+  const retried = looseParse(retry);
+  if (retried) return retried as T;
+  throw new LLMError('LLM returned invalid JSON');
 }

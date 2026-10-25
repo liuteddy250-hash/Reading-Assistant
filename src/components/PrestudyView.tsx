@@ -11,9 +11,10 @@ type Props = {
   payload: PrestudyPayload;
   studied: boolean;
   source: string;
+  llmConfigured: boolean;
 };
 
-export function PrestudyView({ bookId, chapter, payload, studied, source }: Props) {
+export function PrestudyView({ bookId, chapter, payload, studied, source, llmConfigured }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState<'generate' | 'complete' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +73,7 @@ export function PrestudyView({ bookId, chapter, payload, studied, source }: Prop
         <h1>{chapter.title}</h1>
         <div className="row" style={{ marginBottom: 12 }}>
           <span className={`badge ${source === 'llm' ? 'ok' : 'warn'}`}>
-            {source === 'llm' ? 'AI 生成' : '离线规则分析'}
+            {source === 'llm' ? 'AI 生成' : '本地规则分析'}
           </span>
           <span className="badge">{payload.sentences.length} 个长难句</span>
           <span className="badge">{payload.words.length} 个难词</span>
@@ -85,9 +86,18 @@ export function PrestudyView({ bookId, chapter, payload, studied, source }: Prop
 
       {source !== 'llm' ? (
         <div className="alert info">
-          当前是<strong>离线分析模式</strong>（未配置大模型，或调用失败）。
-          难词释义与音标来自 <strong>ECDICT 离线词典</strong>；长难句给出结构拆解与意群切分，
-          暂不生成参考译文。配置大模型后可一键重新生成完整讲解。
+          {llmConfigured ? (
+            <>
+              当前使用<strong>本地规则分析</strong>：本地大模型这次没有返回可用结果（服务未就绪、超时或格式异常），
+              <strong>与你的网络无关</strong>。释义与音标仍来自 ECDICT，但暂无参考译文。
+              确认 <code>start-ollama.cmd</code> 正在运行后，点下方「重新生成预习材料」即可补全。
+            </>
+          ) : (
+            <>
+              当前使用<strong>本地规则分析</strong>（未配置大模型，<strong>与网络无关</strong>）。
+              难词释义与音标来自 ECDICT；配置大模型后可一键生成完整讲解与参考译文。
+            </>
+          )}
         </div>
       ) : null}
 

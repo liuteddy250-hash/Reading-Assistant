@@ -58,6 +58,7 @@ export default async function PrestudyPage({
       payload={record.payload}
       studied={Boolean(record.studiedAt)}
       source={record.source}
+      llmConfigured={llmEnabled()}
     />
   );
 }
