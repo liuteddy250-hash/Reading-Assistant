@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.2
+
+### Changed
+
+- 本地模型库迁到 **D:\ollama-models**（`start-ollama.cmd` 优先使用，缺失时回落到工作区 `.ollama-portable\models`），释放 C 盘。
+- 新增 `pull-7b.cmd`：检查服务后续传 `qwen2.5:7b`，并提示切换 `.env` 的方式。
+
+### Known issues
+
+- 本机 7B 下载在 95%（4.4GB）处因网络对超大文件断流而停住，多次续传未通过；3B 仍为默认模型且工作正常。网络恢复后运行 `pull-7b.cmd` 即可续传。
+
 ## 1.5.1
 
 ### Fixed

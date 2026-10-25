@@ -150,9 +150,10 @@ LLM_MODEL="gpt-4o-mini"
 
 不想用云端 API 时，可以在本机跑一个小模型，**参考译文与长难句讲解都不出网**：
 
-1. 下载便携版 Ollama，解压到工作区的 `.ollama-portable/`（含 `app/` 与 `models/`）；
-2. 运行 `start-ollama.cmd` 启动服务（`start.cmd` 检测到它会自动拉起）；
-3. `.env` 改为：
+1. 下载便携版 Ollama，解压到工作区的 `.ollama-portable/`（含 `app/`）；
+2. 模型库优先用 `D:\ollama-models`（存在时），否则用 `.ollama-portable\models`；
+3. 运行 `start-ollama.cmd` 启动服务（`start.cmd` 检测到它会自动拉起）；
+4. `.env` 改为：
 
 ```env
 LLM_BASE_URL="http://127.0.0.1:11434/v1"
@@ -161,7 +162,9 @@ LLM_MODEL="qwen2.5:3b"
 LLM_TIMEOUT_MS="300000"
 ```
 
-3B 模型在纯 CPU 上约 **1–2 分钟/章**（一次性生成、按章缓存）；关闭 Ollama 后应用会自动回退离线分析模式。
+3B 模型在纯 CPU 上约 **1–2 分钟/章**（一次性生成、按章缓存）；关闭 Ollama 后应用会自动回退本地规则分析。
+
+想换 7B（质量更好、速度约一半）：先 `start-ollama.cmd`，再双击 `pull-7b.cmd` 下载（约 4.7GB，会续传）；完成后把 `.env` 的 `LLM_MODEL` 改成 `qwen2.5:7b`、`LLM_TIMEOUT_MS` 改成 `600000`，重新 `npm run build` 并重启。
 
 ---
 
